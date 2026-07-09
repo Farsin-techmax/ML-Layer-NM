@@ -1,0 +1,20 @@
+# Data files
+data/
+*.xlsx
+*.xls
+*.csv
+*.parquet
+*.pkl
+*.h5
+*.pt
+*.bin
+*.pth
+*.npy
+*.npz
+
+# Other heavy stuff
+__pycache__/
+*.pyc
+.venv/
+node_modules/
+*.log
