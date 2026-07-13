@@ -164,5 +164,6 @@ if __name__ == "__main__":
     print("\n--- Summary ---")
     print(f"Returned DataFrame shape: {final_df.shape}")
     print(final_df['TargetFlag'].value_counts())
-    final_df.to_excel(os.path.join("data", "refactored_dataset.xlsx"), index=False)
+    os.makedirs("refactored_test_dir", exist_ok=True)
+    final_df.to_parquet(os.path.join("refactored_test_dir", "refactored_mastersheet.parquet"), index=False)
     print(f"Saved final_Df with  {final_df['TargetFlag'].value_counts().to_dict()} and shape  {final_df.shape}")
