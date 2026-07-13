@@ -70,11 +70,8 @@ from sklearn.exceptions import ConvergenceWarning
 from scipy.cluster.hierarchy import linkage, fcluster
 from sklearn.feature_selection import mutual_info_classif
 
-<<<<<<< HEAD
 from features import *  # Shared feature engineering functions
 
-=======
->>>>>>> c83bfce4a6ed325bb8144dcaeab3621e09c7974b
 # Ignore DeprecationWarning only
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -107,27 +104,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-<<<<<<< HEAD
 
 ######################### Historical Data Sampling #########################
-=======
-######################### H
-# istorical Data Sampling #########################
-
-def extract_k1(service_str):
-    """Convert '50k' -> 50"""
-    try:
-        return int(service_str.replace("k", "").strip())
-    except:
-        return 0
-
-def extract_kk(service_str):
-    """Extract numeric from Service History description"""
-    try:
-        return int(service_str.split('-')[-1])
-    except:
-        return 0
->>>>>>> c83bfce4a6ed325bb8144dcaeab3621e09c7974b
 
 def get_quarter_dates(selected_quarter, year):
     
@@ -193,7 +171,6 @@ def prepare_pms_datasets(
         print(f'PMS number: {svc_num}')
         while iteration < max_iterations:
             # VINs already done target PMS
-<<<<<<< HEAD
             #this line filter out all the vins that has done a 20k, which makes the 20k absent vehicles left in the 
             #frame df_target, all but 20k done
             df_target = df[~df["VIN"].isin(df.query(f"`Last Service - PMS` == '{svc}'")["VIN"].unique())]
@@ -204,13 +181,6 @@ def prepare_pms_datasets(
             #checking which all services they have done expect 20k/skipping 20k
             serv_filtered = serv[serv["Vin_No"].isin(dfskipped)]
             #grouping them by the vin and the services they did
-=======
-            df_target = df[~df["VIN"].isin(df.query(f"`Last Service - PMS` == '{svc}'")["VIN"].unique())]
-            print(f'DFTarget:  {len(df_target)}')
-            # Skipped VINs
-            dfskipped = df_target.query(f"Service_Num > {svc_num-10}")["VIN"].unique()
-            serv_filtered = serv[serv["Vin_No"].isin(dfskipped)]
->>>>>>> c83bfce4a6ed325bb8144dcaeab3621e09c7974b
             history_grouped = serv_filtered.groupby("Vin_No")["Service_Num"].apply(list).reset_index(name="Completed_Services")
             filtered_df = history_grouped[~history_grouped["Completed_Services"].apply(lambda x: svc_num in x)]
             print(f'Filtered DF: {len(filtered_df)}')
@@ -228,13 +198,9 @@ def prepare_pms_datasets(
             # Pending VINs
 
             print(f'{svc} - Iteration {iteration+1}: Start Date = {start_date_adj.date()}')
-<<<<<<< HEAD
             #this line take the master dataframe and keeps all but vins that completed a 30 without a 20
             missed = df[~df["VIN"].isin(NotTurnUpdf["VIN"].unique())]
             #this line removes all the rows that indeed completed 20k
-=======
-            missed = df[~df["VIN"].isin(NotTurnUpdf["VIN"].unique())]
->>>>>>> c83bfce4a6ed325bb8144dcaeab3621e09c7974b
             missed = missed[~missed["VIN"].isin(df.query(f"`Last Service - PMS` == '{svc}'")["VIN"].unique())]
             missed["FirstSrvDate"] = missed["Invoice date"].fillna(missed["First Service Date"])
             missed["Service_Num"] = missed["Last Service - PMS"].apply(extract_k1)
@@ -285,10 +251,7 @@ def prepare_pms_datasets(
         print(f"{svc} dataset saved: {output_file}")
     return finaltr
 
-<<<<<<< HEAD
 
-=======
->>>>>>> c83bfce4a6ed325bb8144dcaeab3621e09c7974b
 ############################# Historical Data Feature Engineering #############################
 
 def extract_k(service_str):
@@ -342,20 +305,9 @@ def derive_pms_features1(serv1: pd.DataFrame,last_service_code: int,reference_da
     dfpmsdate = dfpmsdate.merge(first_service, on='Vin_No', how='left')
     dfpmsdate = dfpmsdate.merge(last_service, on='Vin_No', how='left')
 
-<<<<<<< HEAD
     # Step 4: Create features
     dfpmsdate['Months_Since_First_PMS'] = (reference_date - dfpmsdate['First_PMS_Date']).dt.days / 30.44
     dfpmsdate['Months_Since_Last_PMS'] = (reference_date - dfpmsdate['Last_PMS_Date']).dt.days / 30.44
-=======
-    # Step 3: Months difference calculator
-    def months_diff(start_date, end_date):
-        rd = relativedelta(end_date, start_date)
-        return rd.years * 12 + rd.months
-
-    # Step 4: Create features
-    dfpmsdate['Months_Since_First_PMS'] = dfpmsdate['First_PMS_Date'].apply(lambda d: months_diff(d, reference_date))
-    dfpmsdate['Months_Since_Last_PMS'] = dfpmsdate['Last_PMS_Date'].apply(lambda d: months_diff(d, reference_date))
->>>>>>> c83bfce4a6ed325bb8144dcaeab3621e09c7974b
 
     # Step 5: Aggregate at VIN level
     dfpmsdate = dfpmsdate.groupby(['Vin_No']).agg(
@@ -363,11 +315,7 @@ def derive_pms_features1(serv1: pd.DataFrame,last_service_code: int,reference_da
         Months_Since_Last_PMS=('Months_Since_Last_PMS', 'mean')
     ).reset_index()
 
-<<<<<<< HEAD
     # Step 6: Create SinglePMS flag
-=======
-    # Step 6: Flag for single PMS
->>>>>>> c83bfce4a6ed325bb8144dcaeab3621e09c7974b
     dfpmsdate['SinglePMS'] = (dfpmsdate['Months_Since_First_PMS'] == dfpmsdate['Months_Since_Last_PMS']).astype(int)
     # dfpmsdate.to_csv('validatecode/dfpmsdate.csv', index=False)
     return dfpmsdate[['Vin_No','Months_Since_Last_PMS', 'SinglePMS']]
@@ -375,7 +323,6 @@ def derive_pms_features1(serv1: pd.DataFrame,last_service_code: int,reference_da
 def derive_npms_features(serv1: pd.DataFrame, reference_date: datetime = None) -> pd.DataFrame:
     """
     Derive Non-PMS (Service_Num == 0) related features per VIN.
-<<<<<<< HEAD
     """
     if reference_date is None:
         reference_date = pd.Timestamp.today()
@@ -396,46 +343,6 @@ def derive_npms_features(serv1: pd.DataFrame, reference_date: datetime = None) -
     dfnpmsdate = dfnpmsdate.merge(first, on='Vin_No', how='left').merge(last, on='Vin_No', how='left')
     dfnpmsdate['Months_Since_First_NPMS'] = (reference_date - dfnpmsdate['First_NPMS_Date']).dt.days / 30.44
     dfnpmsdate['Months_Since_Last_NPMS'] = (reference_date - dfnpmsdate['Last_NPMS_Date']).dt.days / 30.44
-=======
-
-    Parameters
-    ----------
-    serv1 : pd.DataFrame
-        Input dataframe with columns ['Vin_No', 'Service_Date', 'Service_Num'].
-    reference_date : datetime, optional
-        Reference date for calculating months difference. Defaults to today.
-
-    Returns
-    -------
-    pd.DataFrame
-        Aggregated features per VIN:
-        - Months_Since_First_NPMS
-        - Months_Since_Last_NPMS
-    """
-
-    if reference_date is None:
-        reference_date = pd.Timestamp.today()
-
-    # Step 1: Filter Non-PMS services
-    dfnpmsdate = serv1.sort_values(by=['Vin_No', 'Service_Date']).copy()
-    dfnpmsdate = dfnpmsdate.query('Service_Num == 0')
-
-    # Step 2: First and last Non-PMS date per VIN
-    first_service = dfnpmsdate.groupby('Vin_No')['Service_Date'].min().reset_index(name='First_NPMS_Date')
-    last_service = dfnpmsdate.groupby('Vin_No')['Service_Date'].max().reset_index(name='Last_NPMS_Date')
-
-    dfnpmsdate = dfnpmsdate.merge(first_service, on='Vin_No', how='left')
-    dfnpmsdate = dfnpmsdate.merge(last_service, on='Vin_No', how='left')
-
-    # Step 3: Months difference calculator
-    def months_diff(start_date, end_date):
-        rd = relativedelta(end_date, start_date)
-        return rd.years * 12 + rd.months
-
-    # Step 4: Create features
-    dfnpmsdate['Months_Since_First_NPMS'] = dfnpmsdate['First_NPMS_Date'].apply(lambda d: months_diff(d, reference_date))
-    dfnpmsdate['Months_Since_Last_NPMS'] = dfnpmsdate['Last_NPMS_Date'].apply(lambda d: months_diff(d, reference_date))
->>>>>>> c83bfce4a6ed325bb8144dcaeab3621e09c7974b
 
     # Step 5: Aggregate at VIN level
     dfnpmsdate = dfnpmsdate.groupby(['Vin_No']).agg(
@@ -451,7 +358,6 @@ def derive_pms_mileage_features(serv1: pd.DataFrame, dfpmsdate: pd.DataFrame,las
     If SinglePMS == 1, replace its interval with the mean for the same Service_Num
     among VINs where SinglePMS == 0.
     """
-<<<<<<< HEAD
     dfpmsmil = serv1[['Vin_No', 'Service_Num', 'Mileage']].copy()
     dfpmsmil = dfpmsmil.query('Service_Num > 0 and Service_Num < @last_service_code')
     dfpmsmil = dfpmsmil.copy()
@@ -471,44 +377,11 @@ def derive_pms_mileage_features(serv1: pd.DataFrame, dfpmsdate: pd.DataFrame,las
     df_max_service = dfpmsmil.groupby("Vin_No", as_index=False)["Service_Num"].max()
     avg_mileage_interval = avg_mileage_interval.merge(df_max_service, on='Vin_No', how='left')
 
-=======
-
-    # Step 1: Prepare PMS mileage data
-    dfpmsmil = serv1.sort_values(by=['Vin_No', 'Service_Date', 'Mileage']).copy()
-    dfpmsmil['Service_Date'] = pd.to_datetime(dfpmsmil['Service_Date'], format='mixed', dayfirst=True, errors='coerce')
-    dfpmsmil['Mileage'] = pd.to_numeric(dfpmsmil['Mileage'], errors='coerce')
-    dfpmsmil = dfpmsmil.query('Service_Num > 0 and Service_Num < @last_service_code')
-
-    # Step 2: Define function for average mileage interval per VIN & Service_Num
-    def avg_mile_interval(group):
-        m = group.sort_values('Service_Date')['Mileage']
-        intervals = m.diff().fillna(m)  # first interval = first mileage
-        return intervals.mean()
-
-    # Step 3: Apply per VIN + Service_Num
-    avg_mileage_interval = (
-        dfpmsmil
-        .groupby(['Vin_No'])
-        .apply(avg_mile_interval)
-        .reset_index(name='Avg_Mileage_Interval_PMS')
-    )
-
-    # Step 4: Merge with SinglePMS flag (from dfpmsdate)
-    avg_mileage_interval = avg_mileage_interval.merge(
-        dfpmsdate[['Vin_No', 'SinglePMS']],
-        on='Vin_No',
-        how='left'
-    )
-    # Step 5: Replace SinglePMS == 1 values dynamically with Service_Num means
-    df_max_service = dfpmsmil.groupby("Vin_No", as_index=False)["Service_Num"].max()
-    avg_mileage_interval = avg_mileage_interval.merge(df_max_service, on='Vin_No', how='left')
->>>>>>> c83bfce4a6ed325bb8144dcaeab3621e09c7974b
     replacement_means = (
         avg_mileage_interval.query("SinglePMS == 0")
         .groupby('Service_Num')['Avg_Mileage_Interval_PMS']
         .mean()
     )
-<<<<<<< HEAD
 
     mapped_means = avg_mileage_interval['Service_Num'].map(replacement_means)
     mapped_means = mapped_means.fillna(avg_mileage_interval['Avg_Mileage_Interval_PMS'])
@@ -519,32 +392,12 @@ def derive_pms_mileage_features(serv1: pd.DataFrame, dfpmsdate: pd.DataFrame,las
         avg_mileage_interval['Avg_Mileage_Interval_PMS']
     )
 
-=======
-    def replace_if_single(row):
-        if row['SinglePMS'] == 1:
-            return replacement_means.get(row['Service_Num'], row['Avg_Mileage_Interval_PMS'])
-        return row['Avg_Mileage_Interval_PMS']
-
-    avg_mileage_interval['Avg_Mileage_Interval_PMS'] = avg_mileage_interval.apply(replace_if_single, axis=1)
-    # avg_mileage_interval.loc[
-    #         (avg_mileage_interval["Service_Num"] == 10) , 
-    #         'Avg_Mileage_Interval_PMS'
-    #     ] = (last_service_code-10)*1000
-    # avg_mileage_interval.to_csv('validatecode/avg_mileage_interval2.csv', index=False)
->>>>>>> c83bfce4a6ed325bb8144dcaeab3621e09c7974b
     avg_mileage_interval['skipped_blocks'] = ((last_service_code - 10 - avg_mileage_interval['Service_Num']) // 10).clip(lower=0)
     avg_mileage_interval['skipped_blocks'] = np.where(avg_mileage_interval['skipped_blocks'] == 1, 2, avg_mileage_interval['skipped_blocks'])
     avg_mileage_interval['predicted_interval'] = avg_mileage_interval['Avg_Mileage_Interval_PMS'] * avg_mileage_interval['skipped_blocks']
     avg_mileage_interval.loc[avg_mileage_interval['skipped_blocks'] == 0, 'predicted_interval'] = avg_mileage_interval.loc[avg_mileage_interval['skipped_blocks'] == 0, 'Avg_Mileage_Interval_PMS']
-<<<<<<< HEAD
     avg_mileage_interval = avg_mileage_interval.rename(columns={'Avg_Mileage_Interval_PMS':'Avg_Mileage_Interval_PMSold','predicted_interval':'Avg_Mileage_Interval_PMS'})
     avg_mileage_interval = avg_mileage_interval.drop(columns=['SinglePMS','Service_Num','skipped_blocks'])
-=======
-    # avg_mileage_interval.loc[avg_mileage_interval['Service_Num'] == 10, 'predicted_interval'] = avg_mileage_interval.loc[avg_mileage_interval['Service_Num'] == 10, 'Avg_Mileage_Interval_PMS']
-    avg_mileage_interval = avg_mileage_interval.rename(columns={'Avg_Mileage_Interval_PMS':'Avg_Mileage_Interval_PMSold','predicted_interval':'Avg_Mileage_Interval_PMS'})
-    avg_mileage_interval = avg_mileage_interval.drop(columns=['SinglePMS','Service_Num','skipped_blocks'])
-    # avg_mileage_interval.to_csv('validatecode/avg_mileage_intervalwrk.csv', index=False)
->>>>>>> c83bfce4a6ed325bb8144dcaeab3621e09c7974b
     return avg_mileage_interval
 
 def derive_npms_mileage_features(serv1: pd.DataFrame) -> pd.DataFrame:
@@ -563,7 +416,6 @@ def derive_npms_mileage_features(serv1: pd.DataFrame) -> pd.DataFrame:
         - Avg_Mileage_Interval_NPMS
     """
 
-<<<<<<< HEAD
     dfnpmsmil = serv1[serv1['Service_Num'] == 0].copy()
     if dfnpmsmil.empty:
         return pd.DataFrame(columns=['Vin_No', 'Avg_Mileage_Interval_NPMS'])
@@ -576,28 +428,6 @@ def derive_npms_mileage_features(serv1: pd.DataFrame) -> pd.DataFrame:
         .reset_index(name='Avg_Mileage_Interval_NPMS')
     )
 
-=======
-    # Step 1: Filter Non-PMS services
-    dfnpmsmil = serv1.query('Service_Num == 0').copy()
-    dfnpmsmil = dfnpmsmil.sort_values(by=['Vin_No', 'Service_Date'])
-
-    # Step 2: Function to compute avg mileage interval per VIN
-    def avg_mile_interval(group):
-        m = group.sort_values('Service_Date')['Mileage']
-        intervals = m.diff().fillna(m)  # first interval = first mileage
-        return intervals.mean()
-
-    # Step 3: Apply per VIN
-    avg_mileage_interval_non_pms = (
-        dfnpmsmil
-        .groupby('Vin_No')
-        .apply(avg_mile_interval)
-        .reset_index(name='Avg_Mileage_Interval_NPMS')
-    )
-
-    return avg_mileage_interval_non_pms
-
->>>>>>> c83bfce4a6ed325bb8144dcaeab3621e09c7974b
 def derive_pms_service_intervals(serv1: pd.DataFrame,last_service_code: int) -> pd.DataFrame:
     """
     Derive PMS service interval features per VIN.
@@ -626,7 +456,6 @@ def derive_pms_service_intervals(serv1: pd.DataFrame,last_service_code: int) -> 
         })
     )
     df_max_service = dfpmsmil.groupby("Vin_No", as_index=False)["Service_Num"].max()
-<<<<<<< HEAD
     service_max_dates = service_max_dates.sort_values(['Vin_No', 'Service_Date'])
     
     # Calculate differences across sorted DataFrame
@@ -639,38 +468,12 @@ def derive_pms_service_intervals(serv1: pd.DataFrame,last_service_code: int) -> 
     avg_monthly_interval11 = (
         service_max_dates.groupby('Vin_No')['Months_Diff']
         .mean()
-=======
-    # Step 3: Functions
-    def avg_month_interval1(group):
-        dates = group.sort_values('Service_Date')['Service_Date']
-        intervals = dates.diff().dropna().dt.days / 30.44  # months
-        return intervals.mean()
-
-    def avg_month_interval(group):
-        group = group.sort_values('Service_Date')
-        delta_months = group['Service_Date'].diff().dropna().dt.days / 30.44
-        delta_kms = group['Mileage'].diff().dropna()
-        intervals_per_10k = delta_months / (delta_kms / 10000)
-        return intervals_per_10k.mean()
-
-    # Step 4: Calculate both versions
-    avg_monthly_interval11 = (
-        service_max_dates
-        .groupby('Vin_No')
-        .apply(avg_month_interval1)
->>>>>>> c83bfce4a6ed325bb8144dcaeab3621e09c7974b
         .reset_index(name='Avg_Service_Interval_PMS1')
     )
 
     avg_monthly_interval = (
-<<<<<<< HEAD
         service_max_dates.groupby('Vin_No')['Intervals_per_10k']
         .mean()
-=======
-        service_max_dates
-        .groupby('Vin_No')
-        .apply(avg_month_interval)
->>>>>>> c83bfce4a6ed325bb8144dcaeab3621e09c7974b
         .reset_index(name='Avg_Service_Interval_PMS')
     )
 
@@ -832,11 +635,7 @@ def adjust_service_intervals(
 #         if (df["Last_Service"] - offset < min_service).all():
 #             break
 
-<<<<<<< HEAD
 #     # NEW RULE: Service_Num == 10
-=======
-#     # ⭐ NEW RULE: Service_Num == 10
->>>>>>> c83bfce4a6ed325bb8144dcaeab3621e09c7974b
 #     df.loc[df["Service_Num"] == 10, "Multiplier"] = (last_service - 20) / 10
 
 #     df['Avg_Service_Interval_PMSnew'] = df['Avg_Service_Interval_PMS'] * df['Multiplier']
@@ -1006,7 +805,6 @@ def hierarchical_gower_clustering(dfmain, mergedf,feat, k_min=2, k_max=10, metho
     """
     dfmain = dfmain.merge(mergedf,on='Vehicle Key',how='left')
     # --- Step 1: Aggregate stats like in your KMeans code ---
-<<<<<<< HEAD
     # Base aggregation columns (always present)
     agg_dict = {
         "Avg_Mileage_Interval_PMS": "mean",
@@ -1024,42 +822,10 @@ def hierarchical_gower_clustering(dfmain, mergedf,feat, k_min=2, k_max=10, metho
     for _oc in _optional_mode_cols:
         if _oc in dfmain.columns:
             agg_dict[_oc] = _mode_fn
-=======
-    if feat == 'Nationality':
-        agg_dict = {
-            "Avg_Mileage_Interval_PMS": "mean",
-            "PMSRevenue": "mean",
-            "Current Age": "mean",
-            "Vehicle Age": "mean",
-            "Avg_Service_Interval_PMS": "mean",
-            "nNPMS": "mean",
-            "PMS_Delay": "mean",
-            "Service Frequency":"mean",
-            # "Vehicle Service Status_Active":lambda x: x.mode()[0] if not x.mode().empty else np.nan,
-            "New / Used_NEW":lambda x: x.mode()[0] if not x.mode().empty else np.nan,
-            "Model": lambda x: x.mode()[0] if not x.mode().empty else np.nan,
-            "RFM_segments": lambda x: x.mode()[0] if not x.mode().empty else np.nan
-        }
-    else:
-        agg_dict = {
-            "Avg_Mileage_Interval_PMS": "mean",
-            "PMSRevenue": "mean",
-            "Current Age": "mean",
-            "Vehicle Age": "mean",
-            "Avg_Service_Interval_PMS": "mean",
-            "nNPMS": "mean",
-            "PMS_Delay": "mean",
-            "Service Frequency":"mean",
-            # "Vehicle Service Status_Active":lambda x: x.mode()[0] if not x.mode().empty else np.nan,
-            "New / Used_NEW":lambda x: x.mode()[0] if not x.mode().empty else np.nan,
-            "RFM_segments": lambda x: x.mode()[0] if not x.mode().empty else np.nan
-        }
->>>>>>> c83bfce4a6ed325bb8144dcaeab3621e09c7974b
         
     
     stats = dfmain.groupby(feat).agg(agg_dict)
 
-<<<<<<< HEAD
     # Convert pandas custom types to standard numpy types to avoid gower package errors with StringDtypes
     for col in stats.columns:
         if pd.api.types.is_numeric_dtype(stats[col]):
@@ -1067,8 +833,6 @@ def hierarchical_gower_clustering(dfmain, mergedf,feat, k_min=2, k_max=10, metho
         else:
             stats[col] = stats[col].astype(object)
 
-=======
->>>>>>> c83bfce4a6ed325bb8144dcaeab3621e09c7974b
     # --- Step 2: Compute Gower distance ---
     gower_dist = gower.gower_matrix(stats)
 
@@ -1120,40 +884,20 @@ def hierarchical_gower_clustering(dfmain, mergedf,feat, k_min=2, k_max=10, metho
 
     return dfmain, clusters
 
-<<<<<<< HEAD
 def calculate_revenue_spend(df, last_service):
     """Sum PMS revenue columns up to the target service milestone (vectorized)."""
     df = df.copy()
 
-=======
-def calculate_revenue_spend(df,last_service):
-    df = df.copy()
-    
->>>>>>> c83bfce4a6ed325bb8144dcaeab3621e09c7974b
     # Convert service columns (10k, 20k, ...) to numeric
     service_cols = [col for col in df.columns if col.endswith("k")]
     df[service_cols] = df[service_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
 
-<<<<<<< HEAD
     cols_to_sum = [f"{i}K" for i in range(10, last_service - 10 + 1, 10) if f"{i}K" in df.columns]
     df["PMSRevenue"] = df[cols_to_sum].sum(axis=1) if cols_to_sum else 0
-=======
-    revenue_spend = []
-    for _, row in df.iterrows():
-               
-        # Build the list of service columns up to last_service
-        cols_to_sum = [f"{i}K" for i in range(10, last_service -10 + 1, 10) if f"{i}K" in df.columns]
-
-        total = row[cols_to_sum].sum() if cols_to_sum else 0
-        revenue_spend.append(total)
-
-    df["PMSRevenue"] = revenue_spend
->>>>>>> c83bfce4a6ed325bb8144dcaeab3621e09c7974b
     return df
 
 def one_hot(df):
     cat_cols = df.select_dtypes(include='O').keys().tolist()
-<<<<<<< HEAD
     # Safely get columns to encode (skipping the first 3 if there are that many)
     cols_to_encode = cat_cols[3:] if len(cat_cols) > 3 else cat_cols
     
@@ -1161,15 +905,6 @@ def one_hot(df):
         return df
         
     df = pd.get_dummies(df, columns=cols_to_encode, dtype=int)
-=======
-    cat_data = df[cat_cols[3:]]
-    for column in cat_data.columns[:]:
-        tempdf = pd.get_dummies(df[column], prefix=column,dtype=int)
-        df_new = pd.merge(left=df,right=tempdf,left_index=True,right_index=True)
-        df = df_new.drop(columns=column)
-#     else:
-#         df = df
->>>>>>> c83bfce4a6ed325bb8144dcaeab3621e09c7974b
     return df
 
 def calculate_bodyshop_count(df, branch_col='Service_Branch_Name', vin_col='Vin_No', keyword='Bodyshop'):
@@ -1721,15 +1456,12 @@ def transform_complaint_features(main_df, service_df):
         service_df["Service_Date"] = pd.to_datetime(service_df["Service_Date"],
                                                     errors="coerce", dayfirst=True)
 
-<<<<<<< HEAD
     # Check if complaint columns exist in the dataset; if not, add them as empty
     if "Complaint Closed in" not in service_df.columns:
         service_df["Complaint Closed in"] = np.nan
     if "Complaint Category" not in service_df.columns:
         service_df["Complaint Category"] = np.nan
 
-=======
->>>>>>> c83bfce4a6ed325bb8144dcaeab3621e09c7974b
     # Ensure numeric resolution days
     service_df["Complaint Closed in"] = pd.to_numeric(
         service_df["Complaint Closed in"], errors="coerce"
@@ -2464,10 +2196,7 @@ def process_service_data(mastersheet: str,servhistory: str, rfm: str, appointsho
             mastertrain = mastertrain.query(f"{col_name} <= @filterdate and `Last Service Date - PMS` <= @filterdate")
             logger.info(f"Master sheet shape after date filtering: {mastertrain.shape}")
             servcode_desc = pd.read_csv(servcode)
-<<<<<<< HEAD
             servcode_desc = servcode_desc.rename(columns={'SO_CO_CODE': 'Service_Code'})
-=======
->>>>>>> c83bfce4a6ed325bb8144dcaeab3621e09c7974b
             # mastertrain.to_csv('validatecode/mastertrain_initial.csv', index=False)
         except Exception as e:
             logger.error(f"Error processing master sheet: {str(e)}")
@@ -2483,7 +2212,8 @@ def process_service_data(mastersheet: str,servhistory: str, rfm: str, appointsho
             serv1['Service_Date'] = pd.to_datetime(serv1['Service_Date'],format='mixed',dayfirst=True,errors='coerce')
             invalid_dates = serv1['Service_Date'].isna().sum()
             if invalid_dates > 0:
-                logger.warning(f"Found {invalid_dates} invalid dates in service history")
+                logger.warning(f"Found {invalid_dates} invalid dates in service history. Dropping them.")
+                serv1 = serv1.dropna(subset=['Service_Date'])
             
             serv1 = serv1.query(f"Service_Date <= @filterdate")
             logger.info(f"Service history shape after date filtering: {serv1.shape}")
@@ -2780,7 +2510,6 @@ def process_service_data(mastersheet: str,servhistory: str, rfm: str, appointsho
             rem = ['New / Used Category','Current Customer','First Service Date',
                 'Last Service Date', 'Next Service Date','Vehicle Lifetime in Years','MileagePMS',
                 'Last Service - PMS','Sale Invoice Year','Invoice date','Target Revenue','Potential Revenue',
-<<<<<<< HEAD
                   'Final Revenue', 'Vehicle Age']
             filtered_dfnew= filtered_dfnew.drop(rem,axis=1,errors='ignore')
             
@@ -2793,20 +2522,6 @@ def process_service_data(mastersheet: str,servhistory: str, rfm: str, appointsho
             hifunfeats = [c for c in obj_cols if (pms[c] == '-').any()]
             missfeats = [c for c in pms.columns if c not in hifunfeats and pms[c].isnull().any()]
             logger.info(f"Pass 1: {len(hifunfeats)} cols with '-', {len(missfeats)} cols with nulls")
-=======
-                  'Final Revenue']
-            filtered_dfnew= filtered_dfnew.drop(rem,axis=1,errors='ignore')
-            pms = filtered_dfnew
-            missfeats = []
-            hifunfeats = []
-            for j in pms.columns:
-                print(j)
-                print('\n')
-                if '-' in pms[j].values:
-                    hifunfeats.append(j)
-                elif pms[j].isnull().sum() > 0:
-                    missfeats.append(j)
->>>>>>> c83bfce4a6ed325bb8144dcaeab3621e09c7974b
             cond1 = pms['Brake Purchase Interval'] > 0
             cond2 = pms['Tyre Purchase Interval'] > 0
             cond3 = pms['Battery Purchase Interval'] > 0
@@ -2823,7 +2538,6 @@ def process_service_data(mastersheet: str,servhistory: str, rfm: str, appointsho
                 'Battery Purchase Interval','70K R.1']
             pms = pms.drop(missfeatsdrop,axis=1,errors = 'ignore')
 
-<<<<<<< HEAD
             logger.info("Detecting columns with '-' placeholders (pass 2)")
             obj_cols2 = pms.select_dtypes(include='object').columns
             hifunfeats1 = [c for c in obj_cols2 if (pms[c] == '-').any()]
@@ -2848,31 +2562,6 @@ def process_service_data(mastersheet: str,servhistory: str, rfm: str, appointsho
             logger.info(f"Converted {converted_count}/{len(hifunfeats1)} columns to numeric after '-' cleanup")
 
             print(f'Dtype of Vehicle_Key_ExpectedServices: {pms["Vehicle_Key_ExpectedServices"].dtype}')
-=======
-            hifunfeats1,missfeats1 = [],[]
-            for j in pms.columns:
-                print(j)
-                print('\n')
-                if '-' in pms[j].values:
-                    hifunfeats1.append(j)
-                elif pms[j].isnull().sum() > 0:
-                    missfeats1.append(j)
-                print('\n')
-            
-            for i in hifunfeats1:
-                pms[i] = pms[i].replace('-',pd.NA)
-
-            pms['Purchase Age'] = pd.to_numeric(pms['Purchase Age'], errors='coerce')
-            pms['Current Age'] = pd.to_numeric(pms['Current Age'], errors='coerce')
-            pms['Vehicle Age'] = pd.to_numeric(pms['Vehicle Age'], errors='coerce')
-
-            pms.loc[(pms['Current Age'].isnull()) & (pms['Purchase Age'].notnull()), 'Current Age'] = pms['Purchase Age'] + pms['Vehicle Age']
-            pms.loc[(pms['Purchase Age'].isnull()) & (pms['Current Age'].notnull()), 'Purchase Age'] = pms['Current Age'] - pms['Vehicle Age']
-            print(f'Dtype of Vehicle_Key_ExpectedServices: {pms["Vehicle_Key_ExpectedServices"].dtype}')
-            pms['Vehicle_Key_Actual_Service'] = pd.to_numeric(pms['Vehicle_Key_Actual_Service'], errors='coerce')
-            print(f'Dtype of Vehicle_Key_Actual_Service: {pms["Vehicle_Key_Actual_Service"].dtype}')
-            pms['PMS_Delay'] = pms['Vehicle_Key_ExpectedServices'] - pms['Vehicle_Key_Actual_Service']
->>>>>>> c83bfce4a6ed325bb8144dcaeab3621e09c7974b
             catfeats = ['New / Used','Gender','Warranty Status', 'Number of Cylinders']
             for i in ['Nationality','Model','Variant','RFM_segments']:
                 pms[i] = pms[i].fillna('Unknown')
@@ -2896,12 +2585,8 @@ def process_service_data(mastersheet: str,servhistory: str, rfm: str, appointsho
             pms[f'Next{last_service_code}K_Due'] = pd.to_datetime(pms[f'Next{last_service_code}K_Due'],format='mixed',dayfirst=True,errors='coerce')
             colsdue = pms.pop(f'Next{last_service_code}K_Due')
             pms.insert(4, colsdue.name, colsdue)
-<<<<<<< HEAD
             # Drop high-cardinality columns before encoding (already saved for clustering)
             pms = pms.drop(['Nationality','Model','Variant','RFM_segments'],axis=1,errors='ignore')
-=======
-            pms = pms.drop(['Nationality','Model','Variant'],axis=1,errors='ignore')
->>>>>>> c83bfce4a6ed325bb8144dcaeab3621e09c7974b
             # pms.dtypes.reset_index().rename(
             #     columns={"index": "feature", 0: "dtype"}
             # ).to_csv('validatecode/pms_dtypes.csv', index=False)
@@ -2920,7 +2605,6 @@ def process_service_data(mastersheet: str,servhistory: str, rfm: str, appointsho
             # pms[numeric_cols] = pms[numeric_cols].apply(
             #     lambda col: pd.to_numeric(col, errors="coerce")
             # )
-<<<<<<< HEAD
             # ── Robust one-hot encoding ─────────────────────────────
             ID_COLS = {'VIN', 'Vehicle Key', 'Customer ID'}
             MAX_OHE_CARDINALITY = 50  # safety cap
@@ -2953,12 +2637,6 @@ def process_service_data(mastersheet: str,servhistory: str, rfm: str, appointsho
             pmsnew = pd.get_dummies(pms, columns=cols_to_encode, dtype=int)
             pmsnew = pmsnew.reset_index(drop=True)
             logger.info(f'One-hot encoding complete. Shape: {pmsnew.shape}')
-=======
-
-            print('Before one hot encoding')
-            pmsnew = one_hot(pms)
-            pmsnew = pmsnew.reset_index(drop=True)
->>>>>>> c83bfce4a6ed325bb8144dcaeab3621e09c7974b
             
             pmsnew["LowMileageFreqUsers"] = np.where(
              (pmsnew["Avg_Service_Interval_PMS"].between(0, 7)) & (pmsnew["Last Service Mileage"].between(0, (last_service_code-10)*1000)) & (pmsnew["TargetFlag"]==1),1,0)
@@ -2969,7 +2647,6 @@ def process_service_data(mastersheet: str,servhistory: str, rfm: str, appointsho
             pmsnew.insert(1, cols.name, cols)
             pmsnew = pmsnew.drop('70K R.1',axis=1,errors='ignore')
             # pmsnew.to_csv(f'validatecode/finalmerged{last_service_code}kv1.csv', index=False)
-<<<<<<< HEAD
             # Fill all-NaN columns with 0 before imputing (IterativeImputer
             # silently drops them, causing a shape mismatch on reconstruction)
             numeric_block = pmsnew.iloc[:, 5:]
@@ -2977,8 +2654,6 @@ def process_service_data(mastersheet: str,servhistory: str, rfm: str, appointsho
             if len(all_nan_cols) > 0:
                 logger.warning(f"Filling {len(all_nan_cols)} all-NaN columns with 0 before imputation: {list(all_nan_cols)}")
                 pmsnew[all_nan_cols] = 0
-=======
->>>>>>> c83bfce4a6ed325bb8144dcaeab3621e09c7974b
             imputer = IterativeImputer(random_state=0,estimator=Lasso(), max_iter=1)
             pms_imputed = imputer.fit_transform(pmsnew.iloc[:,5:])
             pms_imputed = pd.DataFrame(pms_imputed, columns=pmsnew.columns[5:])
@@ -3020,15 +2695,9 @@ def process_service_data(mastersheet: str,servhistory: str, rfm: str, appointsho
             pms_imputed = pms_imputed.drop(['Mileage','Brake Points','Vehicle_Key_ExpectedServices',
                                             'Tyre Points','Battery Points'],axis=1,errors='ignore')
             
-<<<<<<< HEAD
             clustersnat.to_csv(f'validatecode/Nationality_clusters_{last_service_code}.csv', index=False)
             clustersmod.to_csv(f'validatecode/Model_clusters_{last_service_code}.csv', index=False)
             clustersvar.to_csv(f'validatecode/Variant_clusters_{last_service_code}.csv', index=False)
-=======
-            clustersnat.to_csv(f'validatecode/Nationality_clusters_{last_service_code}Q3.csv', index=False)
-            clustersmod.to_csv(f'validatecode/Model_clusters_{last_service_code}Q3.csv', index=False)
-            clustersvar.to_csv(f'validatecode/Variant_clusters_{last_service_code}Q3.csv', index=False)
->>>>>>> c83bfce4a6ed325bb8144dcaeab3621e09c7974b
             sessdf = pd.read_csv(digidf,low_memory=False)
             pms_imputed = pms_imputed.merge(sessdf,on=['Vehicle Key','Customer ID'],how='left')
             pms_imputed.iloc[:,-4:] = pms_imputed.iloc[:,-4:].fillna(0)
@@ -3041,13 +2710,9 @@ def process_service_data(mastersheet: str,servhistory: str, rfm: str, appointsho
             # pms_imputed.rename(columns={'Avg_Service_Interval_PMS1':'Avg_Service_Interval_PMS'},inplace=True)
             pms_imputed = pms_imputed.rename(columns=lambda c: re.sub(r'\.0$', '', c))
             pms_imputed["Last Service Mileage"] = pms_imputed[["Last PMS Mileage", "LastNonPMSMileage"]].max(axis=1)
-<<<<<<< HEAD
             os.makedirs(f'models/{last_service_code}k', exist_ok=True)
             pms_imputed.to_csv(f'models/{last_service_code}k/training_features.csv', index=False)
             pms_imputed.to_csv(f'validatecode/finalmerged{last_service_code}kQ3.csv', index=False)  # legacy compat
-=======
-            pms_imputed.to_csv(f'validatecode/finalmerged{last_service_code}kQ3.csv', index=False)
->>>>>>> c83bfce4a6ed325bb8144dcaeab3621e09c7974b
             # pms_imputed.to_csv('validatetrainnomseventrev.csv', index=False)
             return pms_imputed
             
@@ -3089,7 +2754,6 @@ def main():
     
     try:
         # Configuration parameters
-<<<<<<< HEAD
         last_service_code = int(sys.argv[1]) if len(sys.argv) > 1 else 70 #Input Target PMS Mileage(e.g., 40 for 40k)
         csv_path1 = f'TestTrain_{last_service_code}k.csv' 
         csv_path2 = 'data/Service History Q1 - 2026.csv'
@@ -3101,36 +2765,15 @@ def main():
         csvpath8 = 'data/VHC Q3 - 2025.csv'
         csvpath9 = 'data/Service Code Desc.csv'
         filter_date = '2026-06-30' #Input Date (need to derive based on current date/quarter)
-=======
-        last_service_code = 70 #Input Target PMS Mileage(e.g., 40 for 40k)
-        csv_path1 = f'TestTrain_{last_service_code}k.csv' 
-        csv_path2 = 'Service History Q1 - 2026.csv' #Input Service History Service History VHC 3 , Service History Feb 2026
-        csvpath3 = 'RFM Segments Q2 - 2025.csv' #Input RFM segments file RFM Segments Latest RFM till 2025
-        csvpath4 = 'Appoinment - Showed Up.csv'  #Input appointment show data
-        csvpath6 ='Appoinments - Q3 - 2025.csv' #Input appointment booking data Appoinments Booking Appoinments2025
-        csvpath5 = 'No Show VINs.csv' #Input appointment no-show data
-        csvpath7 = 'Digital sessions Q3 - 2025.csv' #DigitalData DigitalData2025
-        csvpath8 = 'VHC Q3 - 2025.csv' #VHC_Data_Refined_Enhanced
-        csvpath9 = 'Service Code Desc.csv'
-        filter_date = '2025-06-30' #Input Date (need to derive based on current date/quarter)
->>>>>>> c83bfce4a6ed325bb8144dcaeab3621e09c7974b
         
         logger.info(f"Configuration - Filter date: {filter_date}, Last service code: {last_service_code}")
         
         masterdata = prepare_pms_datasets(
-<<<<<<< HEAD
             df_path="data/EDA - Q3 2025.csv",
             service_history_path="data/Service History Q1 - 2026.csv",
             service_types=[f"{last_service_code}k"],
             selected_quarter="Q2",
             year=2026,
-=======
-            df_path="EDA - Q3 2025.csv", # EDA DatasheetcsvJun
-            service_history_path="Service History Q1 - 2026.csv",
-            service_types=[f"{last_service_code}k"],
-            selected_quarter="Q3", #Input Quarter for Target PMS(need to derive based on current date/quarter)
-            year=2025,#Input Quarter for Target PMS(need to derive based on current date/quarter)
->>>>>>> c83bfce4a6ed325bb8144dcaeab3621e09c7974b
             target_range=(0.45, 0.55),
             output_prefix="TestTrain"
         )
