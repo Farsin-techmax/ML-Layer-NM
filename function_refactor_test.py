@@ -568,5 +568,4 @@ def process_service_data(mastersheet: str,servhistory: str, rfm: str, appointsho
 if __name__ == "__main__":
     import sys
     import os
-
-    dataframe_result = process_service_data()
+    process_service_data()
