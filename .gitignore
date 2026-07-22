@@ -32,7 +32,16 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+legacy/
 .env
+.claude/
+refactored_test_dir/
 
 # notebooks checkpoints
 .ipynb_checkpoints/
+compare_scripts.py 
+function_refactor_test.py
+copy_script.py
+append_gower.py
+compare_scripts.py
+quick_convert.py

@@ -18,6 +18,7 @@ Sections:
   14. Prediction Helpers
 """
 
+import os
 import re
 import ast
 import numpy as np
@@ -402,7 +403,7 @@ def derive_npms_features2(serv1):
 def branch_visit_features(serv1, last_service_code, top_n=7):
     """Branch visit count features per VIN. Returns (pivot_df, top_branches_list)."""
     df = serv1.sort_values(by=['Vin_No', 'Service_Date'])
-    df = df.query("Service_Num <= @last_service_code")
+    df = df.query("Service_Num < @last_service_code")
 
     counts = df.groupby(['Vin_No', 'Service_Branch_Name']).size().reset_index(name='Visit_Count')
     pivot = counts.pivot(index='Vin_No', columns='Service_Branch_Name', values='Visit_Count')
@@ -421,7 +422,7 @@ def branch_visit_features(serv1, last_service_code, top_n=7):
 def branch_diversity_features(serv1, last_service_code):
     """Unique branch count per VIN."""
     df = serv1.sort_values(by=['Vin_No', 'Service_Date'])
-    df = df.query("Service_Num <= @last_service_code")
+    df = df.query("Service_Num < @last_service_code")
 
     grouped = (
         df.groupby('Vin_No')['Service_Branch_Name']
@@ -645,7 +646,7 @@ def compute_late_appointment_metrics(appt_df, service_df, filter_date, svc=None)
     service_df = service_df.copy()
 
     if svc is not None and svc != 0:
-        service_df = service_df.query("Service_Num > 1 and Service_Num <= @svc")
+        service_df = service_df.query("Service_Num > 1 and Service_Num < @svc")
     elif svc is None:
         service_df = service_df.query("Service_Num > 1")
 
@@ -683,7 +684,7 @@ def compute_last_appointment_status_with_constant_service_code(appt_df, service_
     service_df = service_df.copy()
 
     if last_service_code != 0:
-        service_df = service_df.query("Service_Num > 1 and Service_Num <= @last_service_code")
+        service_df = service_df.query("Service_Num > 1 and Service_Num < @last_service_code")
 
     service_df = _derive_vehicle_magic(service_df)
 
@@ -825,7 +826,7 @@ def count_service_appointments_booked(appt_df, service, serv_code, filter_date,
     """Count total service appointments booked before filter_date."""
     df = appt_df.copy()
     df = df[df['Vehicle Magic'].isin(service['Vehicle Magic'].unique())]
-    df[booking_date_col] = pd.to_datetime(df[booking_date_col], dayfirst=True, errors="coerce")
+    df[booking_date_col] = pd.to_datetime(df[booking_date_col], format="mixed", errors="coerce")
     filter_date = pd.to_datetime(filter_date)
     df["Service_Num"] = df["WIP_SERVCODE"].apply(derive_servcode)
     df = df[df[booking_date_col] <= filter_date]
@@ -845,10 +846,16 @@ def transform_complaint_features(main_df, service_df):
 
     if "Service_Date" in service_df.columns:
         service_df["Service_Date"] = pd.to_datetime(service_df["Service_Date"], errors="coerce", dayfirst=True)
+        
+    if "Complaint Closed in" not in service_df.columns:
+        service_df["Complaint Closed in"] = np.nan
+    if "Complaint Category" not in service_df.columns:
+        service_df["Complaint Category"] = np.nan
+        
     service_df["Complaint Closed in"] = pd.to_numeric(service_df["Complaint Closed in"], errors="coerce")
 
     merged = service_df.merge(main_df[["Vin_No", "Last_PMS_Service"]], on="Vin_No", how="inner")
-    merged = merged[merged["Service_Num"] <= merged["Last_PMS_Service"]]
+    merged = merged[merged["Service_Num"] < merged["Last_PMS_Service"]]
     merged = merged.sort_values(["Vin_No", "Service_Date"])
 
     results = []
@@ -889,7 +896,7 @@ def transform_complaint_features(main_df, service_df):
 def vhcpreparation(df, last_service_code, maindf):
     """Prepare VHC features: revenue buckets, criticality flags, top parts OHE (Vectorized)."""
     df = df[df['Vehicle Key'].isin(maindf['Vehicle Key'].unique())].copy()
-    df = df.query("`Service Code` <= @last_service_code").copy()
+    df = df.query("`Service Code` < @last_service_code").copy()
     df['VHC Revenue'] = pd.to_numeric(df['VHC Revenue'], errors="coerce").fillna(0)
     df['VHS Status'] = df['VHS Status'].replace({'Deleted': 'Lost'})
 
@@ -946,20 +953,23 @@ def vhcpreparation(df, last_service_code, maindf):
         else: grouped[c] = grouped[c].fillna(0.0)
 
     # 4. Top Parts OHE
-    parts_df = df.dropna(subset=['Refined Description (Enhanced)']).copy()
-    parts_df['Refined Description (Enhanced)'] = parts_df['Refined Description (Enhanced)'].astype(str).str.strip()
+    desc_col = 'Refined Description (Enhanced)' if 'Refined Description (Enhanced)' in df.columns else 'Refined Description'
     
-    TOP_K = 20
-    for label, col_name in [('Lost', 'LostPart__'), ('Invoiced', 'InvoicedPart__'), ('Deferred', 'DeferredPart__')]:
-        sub_df = parts_df[parts_df['VHS Status'] == label]
-        if not sub_df.empty:
-            top_parts = [p for p, _ in Counter(sub_df['Refined Description (Enhanced)']).most_common(TOP_K)]
-            sub_df = sub_df[sub_df['Refined Description (Enhanced)'].isin(top_parts)]
+    if desc_col in df.columns:
+        parts_df = df.dropna(subset=[desc_col]).copy()
+        parts_df[desc_col] = parts_df[desc_col].astype(str).str.strip()
+        
+        TOP_K = 20
+        for label, col_name in [('Lost', 'LostPart__'), ('Invoiced', 'InvoicedPart__'), ('Deferred', 'DeferredPart__')]:
+            sub_df = parts_df[parts_df['VHS Status'] == label]
             if not sub_df.empty:
-                crosstab = pd.crosstab([sub_df['Vehicle Key'], sub_df['Service Code']], sub_df['Refined Description (Enhanced)']).clip(upper=1)
-                crosstab.columns = [f'{col_name}{c}' for c in crosstab.columns]
-                grouped = grouped.merge(crosstab.reset_index(), on=['Vehicle Key', 'Service Code'], how='left')
-                
+                top_parts = [p for p, _ in Counter(sub_df[desc_col]).most_common(TOP_K)]
+                sub_df = sub_df[sub_df[desc_col].isin(top_parts)]
+                if not sub_df.empty:
+                    crosstab = pd.crosstab([sub_df['Vehicle Key'], sub_df['Service Code']], sub_df[desc_col]).clip(upper=1)
+                    crosstab.columns = [f'{col_name}{c}' for c in crosstab.columns]
+                    grouped = grouped.merge(crosstab.reset_index(), on=['Vehicle Key', 'Service Code'], how='left')
+                    
     # Fill NAs for parts with 0
     part_cols = [c for c in grouped.columns if c.startswith('LostPart__') or c.startswith('InvoicedPart__') or c.startswith('DeferredPart__')]
     grouped[part_cols] = grouped[part_cols].fillna(0).astype(int)
@@ -1051,15 +1061,39 @@ def backfill_vhc_leakage_safe(merged_df, history_df, vhc_cols,
 # ═══════════════════════════════════════════════════════════════════════════════
 # 11. NON-PMS EVENTS
 # ═══════════════════════════════════════════════════════════════════════════════
-
+import os
 def get_non_pms_events(serv, servcode_desc, mastertrain, last_service_code):
     """
     Non-PMS event features: last event OHE, flag, and count.
     Works for both train and pred (parameter is last_service_code / svc).
     """
-    servcode_desc = servcode_desc.dropna()
-    servcode_desc = dict(zip(servcode_desc['SO_CO_CODE'], servcode_desc['SO_CO_DESCRIPN_001']))
-
+    if isinstance(servcode_desc, str):
+        if os.path.exists(servcode_desc):
+            servcode_desc = pd.read_csv(servcode_desc)
+        else:
+            raise FileNotFoundError(f"servcode_desc path not found: {servcode_desc}")
+        
+    if isinstance(servcode_desc, pd.DataFrame):
+        servcode_desc = servcode_desc.dropna(how='all').copy()
+        cols_map = {c.lower().strip(): c for c in servcode_desc.columns}
+        key_col = cols_map.get('so_co_code') or cols_map.get('service_code')
+        val_col = cols_map.get('so_co_descripn_001')
+        if key_col is None or val_col is None:
+            raise KeyError(f"Service code file missing expected columns. Found: {list(servcode_desc.columns)}")
+        servcode_desc = dict(
+            zip(
+                servcode_desc[key_col].astype(str).str.strip(),
+                servcode_desc[val_col].astype(str).str.strip()
+            )
+        )
+    
+    elif isinstance(servcode_desc, dict):
+        pass
+    else:
+        try:
+            servcode_desc = dict(servcode_desc)
+        except Exception:
+            raise TypeError("servcode_desc must be filepath, DataFrame or dict")
     serv = serv.copy()
     serv['Service_Date'] = pd.to_datetime(serv['Service_Date'], dayfirst=True, errors="coerce")
     serv['Revenue'] = pd.to_numeric(serv['Revenue'], errors='coerce').abs()
@@ -1421,3 +1455,149 @@ def compute_pms_delay(df, target_milestone):
     pms_delay = expected_services - actual_services
     
     return pms_delay
+
+from sklearn.metrics import silhouette_score
+
+try:
+    import gower
+except Exception:
+    # Lightweight fallback for gower.gower_matrix when package is not installed.
+    class _GowerFallback:
+        @staticmethod
+        def gower_matrix(df):
+            import numpy as _np
+            import pandas as _pd
+
+            X = df.copy()
+            num_cols = X.select_dtypes(include=[_np.number]).columns.tolist()
+            cat_cols = X.select_dtypes(include=['object', 'category']).columns.tolist()
+            n = X.shape[0]
+            D = _np.zeros((n, n))
+
+            if len(num_cols) > 0:
+                num = X[num_cols].astype(float)
+                ranges = num.max() - num.min()
+                ranges = ranges.replace(0, 1)
+                num_scaled = (num - num.min()) / ranges
+                num_arr = num_scaled.values
+            else:
+                num_arr = None
+
+            for i in range(n):
+                for j in range(i+1, n):
+                    s = 0.0
+                    cnt = 0
+                    if num_arr is not None:
+                        s += _np.nansum(_np.abs(num_arr[i] - num_arr[j]))
+                        cnt += num_arr.shape[1]
+                    if len(cat_cols) > 0:
+                        a = X.iloc[i][cat_cols].astype(str).values
+                        b = X.iloc[j][cat_cols].astype(str).values
+                        s += _np.sum(a != b)
+                        cnt += len(cat_cols)
+                    D[i, j] = s / max(cnt, 1)
+                    D[j, i] = D[i, j]
+            return D
+
+    gower = _GowerFallback()
+import logging
+import warnings
+from scipy.cluster.hierarchy import linkage, fcluster
+def hierarchical_gower_clustering(dfmain, mergedf,feat, k_min=2, k_max=10, method="ward"):
+    """
+    Perform hierarchical clustering with Gower distance.
+    
+    Parameters:
+    - dfmain: pd.DataFrame, input data
+    - feat: str, column name for grouping (like VIN or Model)
+    - k_min, k_max: int, range of clusters to try
+    - method: str, linkage method ('ward', 'average', 'complete', etc.)
+    
+    Returns:
+    - dfmain with cluster assignments
+    - cluster mapping (cluster → list of feature values)
+    """
+    dfmain = dfmain.merge(mergedf,on='Vehicle Key',how='left')
+    # --- Step 1: Aggregate stats like in your KMeans code ---
+    # Base aggregation columns (always present)
+    agg_dict = {
+        "Avg_Mileage_Interval_PMS": "mean",
+        "PMSRevenue": "mean",
+        "Current Age": "mean",
+        "Avg_Service_Interval_PMS": "mean",
+        "nNPMS": "mean",
+        "Service Frequency": "mean",
+    }
+    # Optional columns — add only if they exist in dfmain
+    _mode_fn = lambda x: x.mode()[0] if not x.mode().empty else np.nan
+    _optional_mode_cols = ["New / Used_NEW", "RFM_segments"]
+    if feat == 'Nationality':
+        _optional_mode_cols.append("Model")
+    for _oc in _optional_mode_cols:
+        if _oc in dfmain.columns:
+            agg_dict[_oc] = _mode_fn
+        
+    
+    stats = dfmain.groupby(feat).agg(agg_dict)
+
+    # Convert pandas custom types to standard numpy types to avoid gower package errors with StringDtypes
+    for col in stats.columns:
+        if pd.api.types.is_numeric_dtype(stats[col]):
+            stats[col] = stats[col].astype(float)
+        else:
+            stats[col] = stats[col].astype(object)
+
+    # --- Step 2: Compute Gower distance ---
+    gower_dist = gower.gower_matrix(stats)
+
+    # --- Step 3: Try different cluster numbers and compute silhouette scores ---
+    # scipy linkage expects a condensed (1D) distance matrix; squareform converts
+    from scipy.spatial.distance import squareform
+    gower_condensed = squareform(gower_dist, checks=False)
+    silhouette_scores = []
+    K = range(k_min, k_max+1)
+    
+    for k in K:
+        linkage_matrix = linkage(gower_condensed, method=method)
+        labels = fcluster(linkage_matrix, k, criterion="maxclust")
+        
+        if k > 1:
+            silhouette_scores.append(silhouette_score(gower_dist, labels, metric="precomputed"))
+        else:
+            silhouette_scores.append(None)
+
+    # --- Step 4: Select best k (max silhouette) ---
+    # best_k = K[np.argmax(silhouette_scores)]
+    best_k = 4
+
+    # --- Step 5: Final clustering ---
+    linkage_matrix = linkage(gower_condensed, method=method)
+    labels = fcluster(linkage_matrix, best_k, criterion="maxclust")
+
+    # --- Step 6: Assign clusters back to dfmain ---
+    stats["Cluster"] = labels
+    dfmain[f"{feat}_Cluster"] = dfmain[feat].map(stats["Cluster"].to_dict())
+
+    # --- Step 7: Build cluster summary ---
+    clusters = (
+        dfmain.groupby(f"{feat}_Cluster")[feat]
+        .apply(lambda x: list(set(x)))
+        .reset_index()
+    )
+    # clusters.to_csv(f'validatecode/{feat}_clusters.csv', index=False)
+    dfmain.drop(feat,axis=1,inplace=True)
+    one_hot = pd.get_dummies(dfmain[f'{feat}_Cluster'], prefix=f'{feat}_Cluster',dtype=int)
+
+    # Concatenate back to dfmain
+    dfmain = pd.concat([dfmain, one_hot], axis=1)
+    dfmain.drop([f'{feat}_Cluster','Model','Nationality','RFM_segments'],axis=1,inplace=True,errors='ignore')
+    # --- Optional: Plot dendrogram ---
+    # plt.figure(figsize=(12, 6))
+    # dendrogram(linkage_matrix, labels=stats.index.tolist(), leaf_rotation=90)
+    # plt.title("Hierarchical Clustering Dendrogram")
+    # plt.xlabel(feat)
+    # plt.ylabel("Distance")
+    # plt.show()
+
+    return dfmain, clusters
+
