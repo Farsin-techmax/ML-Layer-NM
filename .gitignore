@@ -1,47 +1,53 @@
+# Virtual Environments & Python
 .venv/
+venv/
+ENV/
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Environment / Secrets
 .env
-data/*.csv
-data/*.xlsx
-pms_processing.log
-.continue
-code
-data
-# data files
+.env.*
+
+# IDEs & System
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+.continue/
+.claude/
+
+# Data Files & Datasets
+data/
+datasets/
 *.csv
+*.xlsx
 *.parquet
 *.pkl
 *.h5
 *.db
-data/
-datasets/
 *.zip
-models/
-validatecode/
-predictions/
 
-# ML / model artifacts
+# ML / Model Artifacts & Outputs
+models/
+checkpoints/
+predictions/
+refactored_test_dir/
+legacy/
+validatecode/
 *.model
 *.bin
-checkpoints/
-models/
 
-# Python stuff
-__pycache__/
-*.pyc
-.venv/
-venv/
-legacy/
-.env
-.claude/
-refactored_test_dir/
+# Logs
+*.log
 
-# notebooks checkpoints
-.ipynb_checkpoints/
-compare_scripts.py 
+# Scratch / One-off scripts (Keep prepare_test_set.py & run_all.py tracked in Git!)
+compare_scripts.py
 function_refactor_test.py
 copy_script.py
 append_gower.py
-compare_scripts.py
 quick_convert.py
+prepare_scripts.py

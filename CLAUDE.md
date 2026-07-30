@@ -108,6 +108,7 @@ have been deleted — check a file exists before referencing it.
 
 ## Docs
 `README.md` — function catalog + data flow for the two original monoliths only; its "Quick run"
-cwd (`d:\Techmax\nurture-mate\ML_layer\code`) is stale. `refactored_test_dir/mi_scores_analysis.md`
-— feature-selection analysis. `AGENTS.md` just points here. Treat the target-definition claims in
-`old_vs_refactored_comparison.md` as wrong (see Project).
+cwd (`d:\Techmax\nurture-mate\ML_layer\code`) is stale. `DATA.md` — which `data/*.csv` files are
+legacy vs the new Q2-2026 snapshot, and where scripts currently mix vintages (unresolved).
+`refactored_test_dir/mi_scores_analysis.md` — feature-selection analysis. `AGENTS.md` just points
+here. Treat the target-definition claims in `old_vs_refactored_comparison.md` as wrong (see Project).

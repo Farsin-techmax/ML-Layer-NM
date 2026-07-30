@@ -20,7 +20,7 @@ def create_test_cohort(eda_path, service_history_path, milestone, start_date, en
     df["FirstSrvDate"] = pd.to_datetime(df["FirstSrvDate"], format="mixed", errors="coerce")
     
     months_to_add = int(milestone / 10) * 6
-    time_based_date = df["FirstSrvDate"] + pd.offsets.DateOffset(months=months_to_add)
+    df["Time_Based_Date"] = df["FirstSrvDate"] + pd.offsets.DateOffset(months=months_to_add)
     
     print(f"Loading actual service history from {service_history_path}...")
     serv = pd.read_csv(service_history_path, low_memory=False, encoding='ISO-8859-1')
@@ -38,7 +38,7 @@ def create_test_cohort(eda_path, service_history_path, milestone, start_date, en
     
         latest_serv = latest_serv.rename(columns={'Service_Date': 'Last_Date', 'Mileage': 'Last_Mileage'})
         
-        cohort_proj = df[['VIN', 'FirstSrvDate']].merge(latest_serv, left_on='VIN', right_on='Vin_No', how='left')
+        cohort_proj = df[['VIN', 'FirstSrvDate', 'Time_Based_Date']].merge(latest_serv, left_on='VIN', right_on='Vin_No', how='left')
         
         cohort_proj['Days_Since_Start'] = (cohort_proj['Last_Date'] - cohort_proj['FirstSrvDate']).dt.days
         cohort_proj['Daily_Mileage'] = np.where(cohort_proj['Days_Since_Start'] > 30, cohort_proj['Last_Mileage'] / cohort_proj['Days_Since_Start'], np.nan)
@@ -46,16 +46,19 @@ def create_test_cohort(eda_path, service_history_path, milestone, start_date, en
         target_mileage = milestone * 1000
         cohort_proj['Miles_Remaining'] = target_mileage - cohort_proj['Last_Mileage']
         cohort_proj['Days_Remaining'] = cohort_proj['Miles_Remaining'] / cohort_proj['Daily_Mileage']
+
+        # limit the number of days remaining between 0 and 10 years
+        cohort_proj['Days_Remaining'] = cohort_proj['Days_Remaining'].where(cohort_proj['Days_Remaining'].between(0, 3650), np.nan)
         
         days_rem = cohort_proj['Days_Remaining'].replace([np.inf, -np.inf], np.nan).fillna(0)
         cohort_proj['Projected_Date'] = cohort_proj['Last_Date'] + pd.to_timedelta(days_rem, unit='D')
         
         invalid_mask = cohort_proj['Projected_Date'].isnull() | (cohort_proj['Days_Remaining'] < 0) | (cohort_proj['Daily_Mileage'] <= 0)
-        cohort_proj.loc[invalid_mask, 'Projected_Date'] = time_based_date[invalid_mask]
+        cohort_proj.loc[invalid_mask, 'Projected_Date'] = cohort_proj.loc[invalid_mask, 'Time_Based_Date']
         
-        df[f"Expected{milestone}kDate"] = cohort_proj['Projected_Date']
+        df[f"Expected{milestone}kDate"] = cohort_proj['Projected_Date'].values
     else:
-        df[f"Expected{milestone}kDate"] = time_based_date
+        df[f"Expected{milestone}kDate"] = df["Time_Based_Date"]
     
     # 2. Filter for vehicles DUE in the target window
     start_dt = pd.to_datetime(start_date)
