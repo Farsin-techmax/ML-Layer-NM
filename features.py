@@ -28,6 +28,19 @@ from dateutil.relativedelta import relativedelta
 from collections import Counter, defaultdict
 
 
+def _debug(msg):
+    """Progress trace for avg_mileage_interval_pms(). Off unless PMS_DEBUG is set.
+
+    These calls used to append to debug.txt unconditionally on every invocation. debug.txt is a
+    tracked file, so any feature-engineering run left the working tree dirty with noise nobody
+    reads. Enable with:  set PMS_DEBUG=1  (PowerShell: $env:PMS_DEBUG=1)
+    """
+    if os.environ.get("PMS_DEBUG"):
+        with open("debug.txt", "a") as fh:
+            fh.write(msg + "\n")
+
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # 1. PARSING & UTILITIES
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -175,25 +188,25 @@ def derive_pms_mileage_features(serv1, dfpmsdate, last_service_code, svc=None):
              Otherwise applies skipped_blocks multiplier.
     """
     dfpmsmil = serv1[['Vin_No', 'Service_Num', 'Mileage']].copy()
-    open("debug.txt", "a").write("1. Filtering\\n")
+    _debug("1. Filtering")
     upper = svc if svc is not None else last_service_code
     if svc is not None:
         dfpmsmil = dfpmsmil.query('Service_Num > 0 and Service_Num <= @upper')
     else:
         dfpmsmil = dfpmsmil.query('Service_Num > 0 and Service_Num < @last_service_code')
 
-    open("debug.txt", "a").write("2. Groupby Diff\\n")
+    _debug("2. Groupby Diff")
     dfpmsmil = dfpmsmil.copy()
     dfpmsmil['Mileage_Diff'] = dfpmsmil.groupby('Vin_No')['Mileage'].diff()
     dfpmsmil['Mileage_Diff'] = dfpmsmil['Mileage_Diff'].fillna(dfpmsmil['Mileage'])
-    open("debug.txt", "a").write("3. Groupby Mean\\n")
+    _debug("3. Groupby Mean")
     avg_mileage_interval = (
         dfpmsmil.groupby('Vin_No')['Mileage_Diff']
         .mean()
         .reset_index(name='Avg_Mileage_Interval_PMS')
     )
 
-    open("debug.txt", "a").write("4. Merges\\n")
+    _debug("4. Merges")
     avg_mileage_interval = avg_mileage_interval.merge(
         dfpmsdate[['Vin_No', 'SinglePMS']], on='Vin_No', how='left'
     )
@@ -201,7 +214,7 @@ def derive_pms_mileage_features(serv1, dfpmsdate, last_service_code, svc=None):
     df_max_service = dfpmsmil.groupby("Vin_No", as_index=False)["Service_Num"].max()
     avg_mileage_interval = avg_mileage_interval.merge(df_max_service, on='Vin_No', how='left')
 
-    open("debug.txt", "a").write("5. Replacement Means\\n")
+    _debug("5. Replacement Means")
     replacement_means = (
         avg_mileage_interval.query("SinglePMS == 0")
         .groupby('Service_Num')['Avg_Mileage_Interval_PMS']
@@ -216,7 +229,7 @@ def derive_pms_mileage_features(serv1, dfpmsdate, last_service_code, svc=None):
         mapped_means,
         avg_mileage_interval['Avg_Mileage_Interval_PMS']
     )
-    open("debug.txt", "a").write("6. Return\\n")
+    _debug("6. Return")
     # For prediction first-service (svc==1), return early without skipped_blocks
     if svc is not None and svc == 1:
         return avg_mileage_interval.drop(columns=['SinglePMS', 'Service_Num'])

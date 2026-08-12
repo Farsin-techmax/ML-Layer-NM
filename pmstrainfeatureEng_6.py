@@ -1,3 +1,12 @@
+"""
+LEGACY -- kept as reference, not part of the current pipeline.
+
+Superseded by pmstrainfeatureeng_refactored.py, which does the same feature engineering on top of
+the shared features.py module instead of duplicating it inline. Kept because the refactor does not
+yet cover everything in here; consult it when a feature's history is in question.
+
+Current path:  pmstrainfeatureeng_refactored.py -> retrain.py -> score_milestone.py / eval_test_metrics.py
+"""
 import re
 import os
 import sys

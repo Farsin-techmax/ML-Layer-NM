@@ -43,11 +43,13 @@ validatecode/
 
 # Logs
 *.log
+# features.py trace output; only written when PMS_DEBUG is set (see features.py _debug)
+debug.txt
 
-# Scratch / One-off scripts (Keep prepare_test_set.py & run_all.py tracked in Git!)
+# Scratch / One-off scripts (prepare_test_set.py IS tracked - do not add it here)
+# run_all.py / prepare_scripts.py were parked in legacy/parked/ on 2026-08-12; legacy/ is ignored.
 compare_scripts.py
 function_refactor_test.py
 copy_script.py
 append_gower.py
 quick_convert.py
-prepare_scripts.py

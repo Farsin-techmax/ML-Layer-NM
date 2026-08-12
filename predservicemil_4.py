@@ -1,3 +1,13 @@
+"""
+LEGACY -- kept as reference, not part of the current pipeline.
+
+Superseded by prepare_test_set.py (cohort + labels) and score_milestone.py (scoring). Still the
+only script that reads the validatecode/ cluster files (Model_clusters_{m}.csv,
+Variant_clusters_{m}.csv, Nationality_clusters_{m}.csv) around line 2307, so validatecode/ is an
+input directory, not just old debug output.
+
+WARNING: this module executes its whole pipeline at import time -- importing it runs it.
+"""
 import logging
 import numpy as np
 import pandas as pd
