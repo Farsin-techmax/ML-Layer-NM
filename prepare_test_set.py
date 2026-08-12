@@ -2,7 +2,6 @@ import pandas as pd
 import numpy as np
 import os
 import sys
-import json
 import argparse
 from pmstrainfeatureeng_refactored import process_service_data, extract_k1, extract_kk
 
@@ -153,25 +152,24 @@ if __name__ == "__main__":
         is_test=True
     )
     
-    # 3. Filter Columns to match Training Set exactly
-    feature_list_path = rf"models\{args.milestone}k\selected_features.json"
-    if not os.path.exists(feature_list_path):
-        print(f"Error: Could not find trained features at {feature_list_path}. Run training first.")
+    # 3. Write the FULL feature matrix -- do NOT filter to a selected_features list.
+    # There are two different selected_features.json files and they are not interchangeable:
+    #   models/{m}k/            -> the feature_sel() MI shortlist (~33 cols)
+    #   models/models_alan/{m}k/ -> what the trained model actually consumes (~113-136 cols)
+    # This step used to filter by the first one, which cut the output to 35 columns and left
+    # 67-78% of every model's inputs zero-filled at inference. Filtering by the second list would
+    # not fix it either: it contains columns derived at inference time (months_to_10k,
+    # Max_PMS_Revenue, Last Service Mileage, ...) that process_service_data never produces.
+    # Both consumers already handle a wide input -- retrain.py intersects it with the training
+    # columns, score_milestone.py zero-fills what is missing and warns with a count.
+    missing_keys = [c for c in ("VIN", "TargetFlag") if c not in test_features.columns]
+    if missing_keys:
+        print(f"Error: process_service_data did not return {missing_keys}; cannot use this cohort.")
         sys.exit(1)
-        
-    with open(feature_list_path, 'r') as f:
-        selected_features = json.load(f)
-        
-    final_cols = ["VIN", "TargetFlag"] + selected_features
-    
-    # Handle missing columns (in case a one-hot encoded category didn't appear in the test set)
-    for col in final_cols:
-        if col not in test_features.columns:
-            print(f"Warning: Column {col} missing in test set. Filling with 0.")
-            test_features[col] = 0
-            
-    final_test_set = test_features[final_cols]
-    
+
+    lead = ["VIN", "TargetFlag"]
+    final_test_set = test_features[lead + [c for c in test_features.columns if c not in lead]]
+
     os.makedirs("test_sets", exist_ok=True)
     test_path = rf"test_sets\test_{args.milestone}k_Q1_2026.csv"
     final_test_set.to_csv(test_path, index=False)
