@@ -18,51 +18,28 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 
+# Model, feature derivation, has_x flags, leak/ID column lists and the HAS_X_EXCLUDE / DROP_RFM
+# policies all live in pms_model.py, shared with score_milestone.py and eval_test_metrics.py.
+from pms_model import (BinaryClassifier, DERIVED_FEATURES, DROP_RFM, add_milestone_flags,
+                       build_inference_matrix, derive_inference_features, id_cols, resolve_path)
+
 USE_HAS_X = True
-
-# 80k is exempt: its Q2 test file records Service_Num = 0 for all 651 positives (Q1 correctly
-# records 80), so has_x becomes 0 everywhere for them and the model calls them all no-shows
-# (1.7% recall, TP=11/651). Leaving has_x off for 80k keeps both quarters usable.
-HAS_X_EXCLUDE = {80}
-
-# RFM segment one-hots are a cohort-vintage marker, not a behaviour signal. Segments are
-# recency-based against a single fixed snapshot, so training positives (completed the milestone
-# years ago) land in Lost/Hibernating/At Risk -- ~67% of them -- while test positives (completed
-# it in 2026) land in Potential Loyalist/Promising. Those training segments are 0.0% of test
-# positives, so the model learns a rule that cannot fire at test time. Q1 and Q2 positives sit on
-# opposite sides of the Potential Loyalist/Promising recency boundary, which is what made 60k
-# score 92.02 on Q1 and 73.65 on Q2. Dropping them: Q1 87.50 / Q2 88.00 -- 11.5pt gap -> 0.5pt.
-DROP_RFM = {60}
-
-# CAVEAT (known, accepted): has_x is derived from Service_Num, which is stamped == milestone only
-# AFTER a vehicle turns up, so every positive gets has_x = 1 across all prior milestones. On the
-# real prediction sets no vehicle has Service_Num == milestone, so that pattern cannot occur in
-# production and these test metrics will not transfer. The target-milestone flag itself is never
-# generated (range stops at milestone-10), so there is no has_{milestone} to drop.
-
-
-def add_milestone_flags(df, milestone):
-    """has_x = 1 if the vehicle has completed prior milestone x (derived from Service_Num).
-    Added for x in [10, 20, ..., milestone-10] only -- the target milestone is excluded so no
-    flag directly encodes TargetFlag. Must run before Service_Num is dropped."""
-    if USE_HAS_X and milestone not in HAS_X_EXCLUDE and 'Service_Num' in df.columns:
-        sn = pd.to_numeric(df['Service_Num'], errors='coerce').fillna(0)
-        for x in range(10, milestone, 10):   # excludes milestone itself
-            assert x != milestone, "target-milestone flag must never be created"
-            df[f'has_{x}'] = (sn >= x).astype(int)
-    return df
 
 
 # --- Config ---
 MILESTONE = int(sys.argv[1])
-TRAIN_Q1 = f"traindataq1_q2/finalmerged{MILESTONE}kQ1.csv"
+TRAIN_Q1 = resolve_path(f"traindataq1_q2/finalmerged{MILESTONE}kQ1.csv")
 if MILESTONE in [20, 30]:
-    TRAIN_Q2 = f"traindataq1_q2/finalmerged{MILESTONE}kQ2026v1.csv"
+    TRAIN_Q2 = resolve_path(f"traindataq1_q2/finalmerged{MILESTONE}kQ2026v1.csv")
 else:
-    TRAIN_Q2 = f"traindataq1_q2/finalmerged{MILESTONE}kQ2_2026v1.csv"
+    TRAIN_Q2 = resolve_path(f"traindataq1_q2/finalmerged{MILESTONE}kQ2_2026v1.csv")
 
-TEST_Q1 = f"testdataq1_q2/{MILESTONE}kPMSTestDataQ1.csv"
-TEST_Q2 = f"testdataq1_q2/{MILESTONE}kPMSTestDataQ2_2026v1.csv"
+# Both test files must carry the FULL process_service_data output (~170-240 cols). The training
+# columns are intersected with every test file that exists (see _test_feature_cols below), so a
+# narrow test file silently shrinks the model: pointing TEST_Q1 at prepare_test_set.py's 35-column
+# output collapsed 50k from ~120 features to 32 and cost ~24 accuracy points on Q1.
+TEST_Q1 = resolve_path(f"testdataq1_q2/{MILESTONE}kPMSTestDataQ1.csv")
+TEST_Q2 = resolve_path(f"testdataq1_q2/{MILESTONE}kPMSTestDataQ2_2026v1.csv")
 MODEL_DIR = f"models/models_alan/{MILESTONE}k"
 BATCH_SIZE = 128
 EPOCHS = 100
@@ -74,7 +51,6 @@ WEIGHT_DECAY = 1e-2
 logger.info("Loading new training data...")
 df_q1 = pd.read_csv(TRAIN_Q1)
 df_q2 = pd.read_csv(TRAIN_Q2)
-
 logger.info(f"Q1 shape: {df_q1.shape}, Q2 shape: {df_q2.shape}")
 logger.info(f"Q1 Target: {df_q1['TargetFlag'].value_counts().to_dict()}")
 logger.info(f"Q2 Target: {df_q2['TargetFlag'].value_counts().to_dict()}")
@@ -90,23 +66,17 @@ train_df = train_df[_due <= pd.Timestamp('2025-12-31')].reset_index(drop=True)
 logger.info(f"After <=Q4-2025 cutoff: {train_df.shape}, Target: {train_df['TargetFlag'].value_counts().to_dict()}")
 
 # === Step 2: Derive missing features ===
+# Same function the test/scoring paths use, so train and inference cannot drift apart.
 logger.info("Deriving missing features...")
-train_df['months_to_10k'] = train_df['Avg_Service_Interval_PMS'].fillna(6.0)
-train_df['Last Service Mileage'] = train_df[['Last PMS Mileage', 'LastNonPMSMileage']].max(axis=1)
-
-pms_rev = train_df.get('PMSRevenue', pd.Series(0, index=train_df.index))
-train_df['Max_PMS_Revenue'] = pms_rev
-train_df['Last_PMS_Revenue'] = pms_rev
-train_df['Min_PMS_Revenue'] = pms_rev * 0.5
-train_df['StdDev_PMS_Revenue'] = pms_rev * 0.2
-logger.info("Derived features added: months_to_10k, Last Service Mileage, PMS Revenue stats")
+train_df = derive_inference_features(train_df)
+logger.info(f"Derived features added: {DERIVED_FEATURES}")
 
 # === Step 3: Prepare features ===
-train_df = add_milestone_flags(train_df, MILESTONE)  # has_x flags before Service_Num is dropped
-leak_cols = ['Service_Num', 'Vehicle_Key_Actual_Service', 'Vehicle Age', 'Current Age', 'Vehicle Lifetime in Months']
-id_cols = ['VIN', 'Vehicle Key', 'Customer ID', 'Last Service Date - PMS', f'Next{MILESTONE}K_Due'] + leak_cols
-train_df = train_df.drop(columns=[c for c in id_cols if c in train_df.columns], errors='ignore')
-logger.info(f"Dropped leaky/ID columns: {[c for c in id_cols if c in train_df.columns or c in leak_cols]}")
+train_df = add_milestone_flags(train_df, MILESTONE, use_has_x=USE_HAS_X)  # before Service_Num goes
+DROP_COLS = id_cols(MILESTONE)   # IDs + LEAK_COLS, from pms_model
+_dropped = [c for c in DROP_COLS if c in train_df.columns]
+train_df = train_df.drop(columns=_dropped, errors='ignore')
+logger.info(f"Dropped leaky/ID columns: {_dropped}")
 
 target_col = 'TargetFlag'
 X = train_df.drop(columns=[target_col])
@@ -120,11 +90,10 @@ X = X.fillna(0)
 def _test_feature_cols(path):
     """Columns the test set will actually have after evaluate_test's derivation."""
     d = pd.read_csv(path, nrows=5, low_memory=False)
-    d = add_milestone_flags(d, MILESTONE)
-    d = d.drop(columns=[c for c in id_cols if c in d.columns], errors='ignore')
+    d = add_milestone_flags(d, MILESTONE, use_has_x=USE_HAS_X)
+    d = d.drop(columns=[c for c in DROP_COLS if c in d.columns], errors='ignore')
     d = d.drop(columns=['TargetFlag'], errors='ignore')
-    return set(d.columns) | {'months_to_10k', 'Last Service Mileage', 'Max_PMS_Revenue',
-                             'Last_PMS_Revenue', 'Min_PMS_Revenue', 'StdDev_PMS_Revenue'}
+    return set(d.columns) | set(DERIVED_FEATURES)
 
 
 # Keep only features that also exist in the test sets, so nothing is zero-filled at inference.
@@ -196,24 +165,7 @@ val_ds = TensorDataset(torch.FloatTensor(X_val_scaled), torch.FloatTensor(y_val)
 train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
 val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE)
 
-# === Step 8: Model setup ===
-class BinaryClassifier(nn.Module):
-    def __init__(self, input_dim):
-        super(BinaryClassifier, self).__init__()
-        self.net = nn.Sequential(
-            nn.Linear(input_dim, 64),
-            nn.BatchNorm1d(64),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(64, 32),
-            nn.BatchNorm1d(32),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(32, 1)
-        )
-    def forward(self, x):
-        return self.net(x)
-
+# === Step 8: Model setup ===  (BinaryClassifier comes from pms_model)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = BinaryClassifier(input_dim=X_train_scaled.shape[1]).to(device)
 
@@ -292,35 +244,16 @@ logger.info("Best model saved.")
 def evaluate_test(test_path, label):
     logger.info(f"\n--- Evaluating on {label} ---")
     test_df = pd.read_csv(test_path)
-    test_df = add_milestone_flags(test_df, MILESTONE)  # has_x flags before Service_Num is dropped
-    test_df = test_df.drop(columns=[c for c in id_cols if c in test_df.columns], errors='ignore')
-    
     y_test = test_df['TargetFlag'].values
-    X_test = test_df.drop(columns=['TargetFlag'], errors='ignore')
-    
-    X_test['months_to_10k'] = X_test['Avg_Service_Interval_PMS'].fillna(6.0) if 'Avg_Service_Interval_PMS' in X_test.columns else 6.0
-    if 'Last PMS Mileage' in X_test.columns and 'LastNonPMSMileage' in X_test.columns:
-        X_test['Last Service Mileage'] = X_test[['Last PMS Mileage', 'LastNonPMSMileage']].max(axis=1)
-    elif 'Last PMS Mileage' in X_test.columns:
-        X_test['Last Service Mileage'] = X_test['Last PMS Mileage']
-    else:
-        X_test['Last Service Mileage'] = 0
-    pms_rev = X_test.get('PMSRevenue', pd.Series(0, index=X_test.index))
-    X_test['Max_PMS_Revenue'] = pms_rev
-    X_test['Last_PMS_Revenue'] = pms_rev
-    X_test['Min_PMS_Revenue'] = pms_rev * 0.5
-    X_test['StdDev_PMS_Revenue'] = pms_rev * 0.2
-    
-    for col in X_test.columns:
-        X_test[col] = pd.to_numeric(X_test[col], errors='coerce')
-    X_test = X_test.fillna(0)
-    
-    for col in selected_features:
-        if col not in X_test.columns:
-            X_test[col] = 0
-    X_test = X_test[selected_features]
+
+    X_test, missing = build_inference_matrix(test_df, MILESTONE, selected_features,
+                                             use_has_x=USE_HAS_X)
+    if missing:
+        # Zero-filled columns are the dominant cause of bad metrics -- surface, don't hide.
+        logger.warning(f"{len(missing)}/{len(selected_features)} features absent from {test_path} "
+                       f"and zero-filled: {missing[:15]}{' ...' if len(missing) > 15 else ''}")
     X_test_scaled = scaler.transform(imputer.transform(X_test))
-    
+
     model.eval()
     X_test_t = torch.FloatTensor(X_test_scaled).to(device)
     with torch.no_grad():
