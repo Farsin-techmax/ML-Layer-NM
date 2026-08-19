@@ -1,15 +1,51 @@
 # project instructions
 What: This is an analytics project where a set of customers/vehicle keys are filtered out a from a larger base of all the vehicles for a specific milestone [20,30,40,50,60,70,80,90,100] and find the probability of them coming over in the expected quarter
 
-training: for each milestone, find the vehicles (by VIN/Vehicle keys) that had previously completed that milestone from the source table service_history_Q2_2026 (servic history upto Q2 2026, will be updated on each quarter), calculate and produce a feature matrix. for labelling, check if they appeared in the quarter they were expected, if no then 0, if they ever have done that experience upto date, then 1. the model will be trained on these
+training: for each milestone, find the vehicles (by VIN/Vehicle keys) that had previously completed that milestone from the source table service_history_Q2_2026 (servic history upto Q2 2026, will be updated on each quarter), calculate and produce a feature matrix. the model will be trained on these
 
-> **Labelling — intended vs actual.** The rule above (turned up *in the expected quarter*) is the
-> goal. The code does NOT do this yet: `pmstrainfeatureeng_refactored.py:136` labels 1 for "last PMS
-> == this milestone" with no date condition — i.e. completed it *ever* — and uses the quarter only to
-> choose which still-pending vehicles become the 0s. Known defect, not yet fixed. It is also why
-> `Service_Num` leaks the label (it is stamped only after turn-up). Do not change the rule as a side
-> effect of another task — it invalidates every training matrix and published metric. See CLAUDE.md.
-testing: upon the training, we will make a testing set, without any leakage (if we are testing for Q2 2025, then training might be upto Q4 2024 (not a rule, could be closer or farther)). the features, similar to the features we made in our training pipeline would produced for this as well, and then we will predict for this expected cohort, validate with the actual scenario (if the quarter had already completed) and then complete the evaluation metrics
+> **Labelling — POC convention, decided 2026-08-12.** *Ever completed*, no quarter-strictness:
+> `1` = the vehicle has done this milestone at any point up to the latest data, `0` = it was expected
+> for the milestone and is still pending past its expected date. The quarter selects **which pending
+> cohort is sampled as the 0s**, nothing more. This is what both pipelines already do —
+> `pmstrainfeatureeng_refactored.py:136` and legacy `pmstrainfeatureEng_6.py:229-234`
+> (`turnup = df.query("\`Last Service - PMS\` == '{svc}'")`, `TargetFlag = 1`) — so it is the
+> convention, not a defect. An earlier note here called it one; that is superseded.
+>
+> Two things follow from it and are accepted for the POC: `Service_Num` still leaks the label
+> (stamped only on turn-up, so it is dropped explicitly — see CLAUDE.md gotchas), and a `0` can
+> become a `1` in a later extract when the customer finally turns up, so labels are a function of
+> the extract date. Do not switch to a quarter-conditioned rule without saying so — it invalidates
+> every training matrix and published metric.
+>
+> **A third consequence, measured 2026-08-16 and now the pipeline's biggest open problem.** Because
+> positives are drawn from all time and negatives from a single due-date window, the two cohorts
+> differ systematically in how much service history they have — so history-derived features carry
+> the *opposite* sign in training to the one they have at test time. On 20k, `has_10` scores raw AUC
+> 0.3602 in training and 0.6885 on the Q1 test set; `PMS_Count_Prior` 0.3792 vs 0.7224. Shuffling
+> the whole schedule-keeping family **raises** 20k test AUC by 0.19. This is the labelling
+> convention working as specified, not a bug — but it caps what the 20k model can reach
+> (AUC 0.62 vs 0.95 on 60k, where the milestones nearest the target stay consistent). See the
+> CLAUDE.md gotcha for the full table.
+>
+> **The obvious fix was tried on 2026-08-16 and did not work.** `--label-mode window` makes the
+> positives share the negatives' due-date window, which is what the test cohorts already do. It
+> improved calibration but **lost AUC on 6 of 8 milestone/quarter combinations** (40k worst, −0.13
+> Q1 / −0.14 Q2); 20k stayed broken either way, with Q2 AUC **below 0.5**. Two prerequisites came
+> out of that attempt and must be fixed before the labelling rule is revisited: `Next{m}K_Due` is
+> back-filled from the actual turn-up date for `ever`-mode positives, and the expected-date formula
+> runs ~12.7 months early at 60k. Both are documented in CLAUDE.md. **So the 'ever' convention
+> stands as the default** — not because it is right, but because the alternative is not yet better.
+
+testing: same labelling convention as training — ever completed = 1, expected-but-pending = 0. Build
+the test set without leakage (if we are testing for Q2 2025, then training might be upto Q4 2024 (not
+a rule, could be closer or farther)). the features, similar to the features we made in our training
+pipeline would produced for this as well, and then we will predict for this expected cohort, validate
+with the actual scenario and then complete the evaluation metrics.
+
+> One deliberate train/test difference: a vehicle that completed the milestone **before the feature
+> cutoff** is a `1` in training but is dropped from the test cohort entirely
+> (`prepare_test_set.py:76-82`). Its outcome is already known at scoring time, so scoring it would
+> inflate the metrics.
 
 tech stack: Numpy, Pandas, Pytorch, Matplotlib, SHAP, Plotly, other important libraries. this is the data processing and scoring pipeline part of the project.
 

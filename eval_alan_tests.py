@@ -1,3 +1,15 @@
+"""RETIRED 2026-08-12 -- evaluates the legacy artifacts, which no longer exist in a usable form.
+
+It read models/{m}k/training/selected_features.json, falling back to
+models/{m}k/selected_features.json. That fallback was the feature_sel() MI shortlist, retired on
+2026-08-12 when the pipeline moved to one list per model at models/selected_features_{m}k.json.
+With the fallback gone this script would either crash or silently score against the wrong list.
+
+Its replacement is eval_test_metrics.py (current models, shared derivation via pms_model.py).
+The evaluation loop at the bottom is commented out so importing or running this file does nothing.
+Kept for reference only -- the legacy net below (ServicePredictionNN, dropout 0.5, StandardScaler)
+is NOT the network the current pipeline trains.
+"""
 import pandas as pd
 import numpy as np
 import os
@@ -92,14 +104,18 @@ def evaluate(milestone, q, test_path):
     except ValueError as e:
         print(f"Error calculating metrics: {e}")
 
-configs = [
-    {"q": "Q1", "milestone": 80, "path": r"c:\Techmax\cwf\code\tests_alan\Q1\80k\test_features.csv"},
-    {"q": "Q1", "milestone": 90, "path": r"c:\Techmax\cwf\code\tests_alan\Q1\90k\test_features.csv"},
-    {"q": "Q1", "milestone": 100, "path": r"c:\Techmax\cwf\code\tests_alan\Q1\100k\test_features.csv"},
-    {"q": "Q2", "milestone": 80, "path": r"c:\Techmax\cwf\code\tests_alan\Q2\80k\test_features.csv"},
-    {"q": "Q2", "milestone": 90, "path": r"c:\Techmax\cwf\code\tests_alan\Q2\90k\test_features.csv"},
-    {"q": "Q2", "milestone": 100, "path": r"c:\Techmax\cwf\code\tests_alan\Q2\100k\test_features.csv"}
-]
+# --- commented out: retired, see module docstring. Use eval_test_metrics.py instead. ---
+# configs = [
+#     {"q": "Q1", "milestone": 80, "path": r"c:\Techmax\cwf\code\tests_alan\Q1\80k\test_features.csv"},
+#     {"q": "Q1", "milestone": 90, "path": r"c:\Techmax\cwf\code\tests_alan\Q1\90k\test_features.csv"},
+#     {"q": "Q1", "milestone": 100, "path": r"c:\Techmax\cwf\code\tests_alan\Q1\100k\test_features.csv"},
+#     {"q": "Q2", "milestone": 80, "path": r"c:\Techmax\cwf\code\tests_alan\Q2\80k\test_features.csv"},
+#     {"q": "Q2", "milestone": 90, "path": r"c:\Techmax\cwf\code\tests_alan\Q2\90k\test_features.csv"},
+#     {"q": "Q2", "milestone": 100, "path": r"c:\Techmax\cwf\code\tests_alan\Q2\100k\test_features.csv"}
+# ]
+#
+# for cfg in configs:
+#     evaluate(cfg['milestone'], cfg['q'], cfg['path'])
 
-for cfg in configs:
-    evaluate(cfg['milestone'], cfg['q'], cfg['path'])
+if __name__ == "__main__":
+    print(__doc__)

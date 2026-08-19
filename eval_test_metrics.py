@@ -16,23 +16,32 @@ import pandas as pd
 import torch
 from sklearn.metrics import roc_auc_score, f1_score, precision_score, recall_score, accuracy_score
 
-from pms_model import build_inference_matrix, load_artifacts, predict_proba, resolve_path
+from pms_model import (build_inference_matrix, features_path, load_artifacts, model_dir,
+                       predict_proba, resolve_path, split_missing)
 
 MILESTONES = [20, 30, 40, 50, 60, 70, 80, 90, 100]
 DEVICE = torch.device("cpu")
 
 
 def evaluate(milestone, quarter_label, test_path):
-    mdir = f"models/models_alan/{milestone}k"
-    if not (os.path.exists(test_path) and os.path.exists(os.path.join(mdir, 'best_model.pt'))):
+    mdir = model_dir(milestone)
+    if not (os.path.exists(test_path) and os.path.exists(os.path.join(mdir, 'best_model.pt'))
+            and os.path.exists(features_path(milestone))):
         return None
 
-    model, imputer, scaler, selected_features = load_artifacts(mdir, DEVICE)
+    model, imputer, scaler, selected_features = load_artifacts(milestone, DEVICE)
 
     test_df = pd.read_csv(test_path, low_memory=False)
     y = test_df['TargetFlag'].astype(int).values
 
-    X, _ = build_inference_matrix(test_df, milestone, selected_features)
+    X, missing = build_inference_matrix(test_df, milestone, selected_features)
+    # This used to be discarded (`X, _ = ...`), so a heavily zero-filled evaluation looked exactly
+    # like a clean one. Absent one-hot categories are harmless; genuine gaps invalidate the row.
+    _expected, gaps = split_missing(missing, test_df.columns) if missing else ([], [])
+    if gaps:
+        print(f"  WARNING {milestone}k {quarter_label}: {len(gaps)}/{len(selected_features)} "
+              f"features GENUINELY missing from {test_path} and zero-filled: "
+              f"{gaps[:10]}{' ...' if len(gaps) > 10 else ''}")
     probs = predict_proba(model, imputer, scaler, X, DEVICE)
     pred = (probs > 0.5).astype(int)
 
@@ -50,6 +59,8 @@ def evaluate(milestone, quarter_label, test_path):
         F1=round(100 * f1_score(y, pred, zero_division=0), 2),
         TP=tp, TN=tn, FP=fp, FN=fn,
         Pred_Pos=tp + fp, Actual_Pos=tp + fn,
+        ZeroFill=len(gaps),          # genuine schema gaps -- non-zero invalidates the row
+        DummyFill=len(_expected),    # absent one-hot categories -- harmless, 0 is correct
     )
 
 
@@ -68,8 +79,11 @@ def main():
         print("No results.")
         return
     df = pd.DataFrame(rows)
+    # ZeroFill = model inputs the test pipeline never produced; a non-zero value invalidates the
+    # row's metrics, so read it before the accuracy. DummyFill = one-hot categories that simply did
+    # not occur in the cohort; 0 is the correct value there and the count is informational.
     cols = ['Milestone', 'Quarter', 'Records', 'Accuracy', 'Precision', 'Recall', 'AUC', 'F1',
-            'TP', 'TN', 'FP', 'FN', 'Pred_Pos', 'Actual_Pos']
+            'TP', 'TN', 'FP', 'FN', 'Pred_Pos', 'Actual_Pos', 'ZeroFill', 'DummyFill']
     df = df[cols]
     for q in ['Q1', 'Q2']:
         sub = df[df.Quarter == q]

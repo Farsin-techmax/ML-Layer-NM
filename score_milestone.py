@@ -21,7 +21,8 @@ import torch
 from sklearn.metrics import (roc_auc_score, f1_score, precision_score, recall_score,
                              accuracy_score, brier_score_loss, confusion_matrix)
 
-from pms_model import build_inference_matrix, load_artifacts, predict_proba
+from pms_model import (build_inference_matrix, features_path, load_artifacts, model_dir,
+                       predict_proba, split_missing)
 
 DEVICE = torch.device("cpu")
 
@@ -30,17 +31,20 @@ def main():
     p = argparse.ArgumentParser(description="Score a cohort and save per-VIN probabilities")
     p.add_argument("milestone", type=int)
     p.add_argument("--test", required=True, help="Cohort CSV (full process_service_data output)")
-    p.add_argument("--model-dir", default=None, help="Default: models/models_alan/{m}k")
+    p.add_argument("--model-dir", default=None, help="Default: models/{m}k")
     p.add_argument("--out", default=None, help="Default: predictions/{m}k/scored_<testname>.csv")
     p.add_argument("--threshold", type=float, default=None,
                    help="Default: model-dir threshold.json, else 0.5")
     args = p.parse_args()
 
     m = args.milestone
-    mdir = args.model_dir or f"models/models_alan/{m}k"
-    for f in ['best_model.pt', 'selected_features.json', 'imputer.joblib', 'scaler.joblib']:
+    mdir = args.model_dir or model_dir(m)
+    for f in ['best_model.pt', 'imputer.joblib', 'scaler.joblib']:
         if not os.path.exists(os.path.join(mdir, f)):
             sys.exit(f"Missing {os.path.join(mdir, f)} -- run: python retrain.py {m}")
+    # The feature list is one file per model at the models/ root, not inside the model dir.
+    if not os.path.exists(features_path(m)):
+        sys.exit(f"Missing {features_path(m)} -- run: python retrain.py {m}")
     if not os.path.exists(args.test):
         sys.exit(f"Missing test file {args.test}")
 
@@ -49,7 +53,7 @@ def main():
         tp = os.path.join(mdir, 'threshold.json')
         threshold = json.load(open(tp))['threshold'] if os.path.exists(tp) else 0.5
 
-    model, imputer, scaler, selected_features = load_artifacts(mdir, DEVICE)
+    model, imputer, scaler, selected_features = load_artifacts(m, DEVICE, mdir=mdir)
 
     df = pd.read_csv(args.test, low_memory=False)
     vin = df['VIN'] if 'VIN' in df.columns else pd.Series(df.index, name='VIN')
@@ -58,9 +62,15 @@ def main():
     X, missing = build_inference_matrix(df, m, selected_features)
     print(f"{m}k | rows={len(X)} | features={len(selected_features)} | threshold={threshold:.4f}")
     if missing:
-        # Zero-filled columns are the dominant cause of bad metrics -- surface, don't hide.
-        print(f"WARNING: {len(missing)}/{len(selected_features)} features absent from the test "
-              f"file and zero-filled: {missing[:15]}{' ...' if len(missing) > 15 else ''}")
+        # Absent one-hot categories are fine (0 is the correct value for a category that did not
+        # occur). Genuine gaps are the dominant cause of bad metrics -- keep those loud.
+        expected, gaps = split_missing(missing, df.columns)
+        if expected:
+            print(f"note: {len(expected)}/{len(selected_features)} absent one-hot categories "
+                  f"zero-filled (expected, 0 is correct)")
+        if gaps:
+            print(f"WARNING: {len(gaps)}/{len(selected_features)} features GENUINELY missing from "
+                  f"the test file and zero-filled: {gaps[:15]}{' ...' if len(gaps) > 15 else ''}")
 
     probs = predict_proba(model, imputer, scaler, X, DEVICE)
     pred = (probs > threshold).astype(int)
