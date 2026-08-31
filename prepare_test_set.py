@@ -3,8 +3,10 @@ import numpy as np
 import os
 import sys
 import argparse
-from pmstrainfeatureeng_refactored import process_service_data, extract_k1, extract_kk
+from pmstrainfeatureeng_refactored import process_service_data, extract_k1
+from features import resolve_service_num
 from features import expected_milestone_months
+from date_utils import parse_dates
 
 def create_candidates_test_cohort(eda_path, service_history_path, milestone, start_date, end_date,
                                   grace_days, band_days=None):
@@ -39,10 +41,8 @@ def create_candidates_test_cohort(eda_path, service_history_path, milestone, sta
     df = pd.read_csv(eda_path, low_memory=False, encoding="ISO-8859-1")
     df = df.query("`Last Service - PMS` != '-'").copy()
 
-    df["Invoice date"] = pd.to_datetime(df["Invoice date"].replace("-", pd.NA), format="mixed",
-                                        dayfirst=True, errors="coerce")
-    df["First Service Date"] = pd.to_datetime(df["First Service Date"].replace("-", pd.NA),
-                                              format="mixed", dayfirst=True, errors="coerce")
+    df["Invoice date"] = parse_dates(df["Invoice date"])
+    df["First Service Date"] = parse_dates(df["First Service Date"])
     df["FirstSrvDate"] = df["Invoice date"].fillna(df["First Service Date"])
     n_before = len(df)
     df = df[df["Invoice date"].notna()].copy()
@@ -50,13 +50,10 @@ def create_candidates_test_cohort(eda_path, service_history_path, milestone, sta
           f"({n_before - len(df):,} dropped, no genuine sale date)")
 
     serv = pd.read_csv(service_history_path, low_memory=False, encoding="ISO-8859-1")
-    serv["Service_Date"] = pd.to_datetime(serv["Service_Date"], format="mixed", dayfirst=True,
-                                          errors="coerce")
+    serv["Service_Date"] = parse_dates(serv["Service_Date"])
     serv["Mileage"] = pd.to_numeric(serv["Mileage"], errors="coerce")
     serv = serv.dropna(subset=["Service_Date"])
-    # Raw Service_Code, NOT extract_kk(Description) -- matches build_candidates_cohort() exactly
-    # (see that function's docstring for why extract_kk's '<=10' trap is avoided here regardless).
-    serv["Service_Num"] = pd.to_numeric(serv["Service_Code"], errors="coerce")
+    serv["Service_Num"] = resolve_service_num(serv)
 
     vins = df["VIN"].values
     first_srv = df.set_index("VIN")["FirstSrvDate"].reindex(vins)
@@ -141,8 +138,12 @@ def create_test_cohort(eda_path, service_history_path, milestone, start_date, en
     df = df.query("`Last Service - PMS` != '-'").copy()
 
     # 1. Compute Expected Date for the milestone
+    # EDA dates are day-first ('12/11/2024' = 12 Nov). Parsed without that, every value whose day
+    # part is 1-12 silently becomes a different real date, which shifts Expected{m}kDate and so
+    # changes who is in the cohort at all. See date_utils for the full story.
+    df["Invoice date"] = parse_dates(df["Invoice date"])
+    df["First Service Date"] = parse_dates(df["First Service Date"])
     df["FirstSrvDate"] = df["Invoice date"].fillna(df["First Service Date"])
-    df["FirstSrvDate"] = pd.to_datetime(df["FirstSrvDate"], format="mixed", errors="coerce")
 
     months_to_add = expected_milestone_months(milestone, date_model)
     print(f"Expected-date model: {date_model} ({months_to_add} months from first service)")
@@ -150,9 +151,15 @@ def create_test_cohort(eda_path, service_history_path, milestone, start_date, en
     
     print(f"Loading actual service history from {service_history_path}...")
     serv = pd.read_csv(service_history_path, low_memory=False, encoding='ISO-8859-1')
-    serv['Service_Date'] = pd.to_datetime(serv['Service_Date'], format='mixed', errors='coerce')
+    # Service history is day-first ('29-06-2026 00:00'). This line used to omit that, so every
+    # service on days 1-12 of a month was read as a date in a different month -- the labelling
+    # ('did they turn up in the window') and the early-completion exclusion both read this column.
+    serv['Service_Date'] = parse_dates(serv['Service_Date'])
     serv['Mileage'] = pd.to_numeric(serv['Mileage'], errors='coerce')
-    serv["Service_Num"] = serv["Description"].apply(extract_kk)
+    # Service_Code is authoritative; Description is only a fallback. Reading Description first
+    # mislabelled every 20k done in Q1 2026 (spelled '11_20' there, which int() reads as 1120):
+    # 481 of 951 vehicles in the 20k Q1 cohort were scored as no-shows when they had turned up.
+    serv["Service_Num"] = resolve_service_num(serv)
     cutoff_dt = pd.to_datetime(cutoff_date)
     
     if use_mileage_projection:

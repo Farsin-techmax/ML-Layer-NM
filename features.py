@@ -26,6 +26,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from collections import Counter, defaultdict
+from date_utils import parse_dates
 
 
 def _debug(msg):
@@ -62,6 +63,64 @@ def extract_kk(service_str):
 
 # Alias used in training script
 extract_k = extract_kk
+
+
+# Legitimate PMS service numbers: the first service, then every 10k milestone. Anything else in
+# Service_Code (5, 15, 25, ... and the non-numeric branch codes GM/TYR/MEC) is not a milestone and
+# must resolve to 0, because `Service_Num == 0` is how the whole feature pipeline spells "non-PMS"
+# (features.py has 12 such tests). Widening that set is not a cleanup -- it silently empties every
+# non-PMS feature.
+PMS_SERVICE_NUMS = frozenset({1} | {10 * i for i in range(1, 41)})
+
+
+def _is_pms_num(s):
+    return s.isin(PMS_SERVICE_NUMS)
+
+
+def _desc_service_num(desc):
+    """Read a milestone out of the Description band, defensively.
+
+    Description is a mileage band whose upper bound is the service number, but the column carries
+    three spellings of the SAME 20k service across the files:
+
+        '11-20'   clean            (the July 2026 extract)
+        'Nov-20'  Excel damage     (main history, everywhere except Q1 2026)
+        '11_20'   a manual repair  (main history, Q1 2026 only)
+
+    Bare `extract_kk` reads the first two as 20 and the third as **1120**, because Python's int()
+    accepts '_' as a digit separator (PEP 515): int('11_20') == 1120. Normalising '_' to '-' first
+    makes all three read as 20. '<=10' is spelled out because its own reading is 0.
+    """
+    s = str(desc).strip()
+    if s == "<=10":
+        return 10
+    return extract_kk(s.replace("_", "-"))
+
+
+def resolve_service_num(df, code_col="Service_Code", desc_col="Description"):
+    """Service number per row: Service_Code is the source of truth, Description is the fallback.
+
+    Service_Code is a plain integer, so it cannot be misread the way the Description text can. It is
+    used wherever it names a real PMS service number; otherwise the Description band is consulted;
+    otherwise the row is non-PMS and gets 0.
+
+    Returns an int64 Series aligned to `df`, matching the dtype the old
+    `df['Description'].apply(extract_kk)` produced. Also folds in the `'<=10' -> 10` special case
+    that callers used to patch in by hand with a separate np.where.
+    """
+    idx = df.index
+    if code_col in df.columns:
+        code = pd.to_numeric(df[code_col], errors="coerce")
+    else:
+        code = pd.Series(np.nan, index=idx, dtype="float64")
+    if desc_col in df.columns:
+        desc = df[desc_col].map(_desc_service_num).astype("float64")
+    else:
+        desc = pd.Series(np.nan, index=idx, dtype="float64")
+
+    out = code.where(_is_pms_num(code))
+    out = out.fillna(desc.where(_is_pms_num(desc)))
+    return out.fillna(0).astype("int64")
 
 
 def derive_servcode(value):
@@ -385,7 +444,7 @@ def derive_npms_features2(serv1):
         Mileage=('Mileage', 'mean'), Total_Revenue=('Revenue', 'sum')
     ).reset_index()
 
-    npms_df['Service_Date'] = pd.to_datetime(npms_df['Service_Date'], dayfirst=True, errors='coerce')
+    npms_df['Service_Date'] = parse_dates(npms_df['Service_Date'])
     npms_df['Mileage'] = pd.to_numeric(npms_df['Mileage'], errors='coerce')
 
     npms_agg = npms_df.groupby(['Vin_No', 'Service_Num', 'Service_Date']).agg(
@@ -460,7 +519,7 @@ def calculate_bodyshop_count(df, branch_col='Service_Branch_Name', vin_col='Vin_
 def compute_service_features(serv, filterdate, last_service_num=None):
     """PMS and Non-PMS revenue features per Vin_No."""
     serv = serv.copy()
-    serv['Service_Date'] = pd.to_datetime(serv['Service_Date'])
+    serv['Service_Date'] = parse_dates(serv['Service_Date'])
     serv['Revenue'] = pd.to_numeric(serv['Revenue'], errors='coerce').abs()
     serv['Service_Num'] = pd.to_numeric(serv['Service_Num'], errors='coerce')
 
@@ -519,7 +578,7 @@ def derive_pms_frequency(serv, filterdate, min_years=1.0):
       PMS_Freq_PerYear      -- PMS_Count_Prior / Years_Since_First_PMS
     """
     serv = serv.copy()
-    serv['Service_Date'] = pd.to_datetime(serv['Service_Date'], errors='coerce')
+    serv['Service_Date'] = parse_dates(serv['Service_Date'])
     serv = serv.dropna(subset=['Service_Date'])
 
     reference_date = pd.to_datetime(filterdate)
@@ -585,7 +644,7 @@ def map_appointments_to_services(appointments_df, service_df, svc=None):
     appointments_df.rename(columns={'WIP_VEH_CHASSIS': 'Vin_No'}, inplace=True)
     appointments_df["WIP_DATECREATED"] = pd.to_datetime(appointments_df["WIP_DATECREATED"], dayfirst=True)
     appointments_df["Date_Due_In_+10 Days"] = pd.to_datetime(appointments_df["Date_Due_In_+10 Days"], dayfirst=True)
-    service_df["Service_Date"] = pd.to_datetime(service_df["Service_Date"], dayfirst=True)
+    service_df["Service_Date"] = parse_dates(service_df["Service_Date"])
     appointments_df = appointments_df.query("WIP_DATECREATED <= '2025-06-30'")
     appointments_df = appointments_df[appointments_df['Vin_No'].isin(service_df['Vin_No'].unique())]
 
@@ -699,7 +758,7 @@ def compute_late_appointment_metrics(appt_df, service_df, filter_date, svc=None)
     service_df = _derive_vehicle_magic(service_df)
 
     appt_df["Due Date IN"] = pd.to_datetime(appt_df["Due Date IN"], errors="coerce", dayfirst=True)
-    service_df["Service_Date"] = pd.to_datetime(service_df["Service_Date"], errors="coerce", dayfirst=True)
+    service_df["Service_Date"] = parse_dates(service_df["Service_Date"])
     appt_df = appt_df[appt_df['Vehicle Magic'].isin(service_df["Vehicle Magic"].unique())]
 
     appt_df["Service_Num"] = appt_df["WIP_SERVCODE"].apply(derive_servcode)
@@ -735,7 +794,7 @@ def compute_last_appointment_status_with_constant_service_code(appt_df, service_
     service_df = _derive_vehicle_magic(service_df)
 
     appt_df["Due Date IN"] = pd.to_datetime(appt_df["Due Date IN"], errors="coerce", dayfirst=True)
-    service_df["Service_Date"] = pd.to_datetime(service_df["Service_Date"], errors="coerce", dayfirst=True)
+    service_df["Service_Date"] = parse_dates(service_df["Service_Date"])
     appt_df = appt_df[appt_df['Vehicle Magic'].isin(service_df["Vehicle Magic"].unique())]
 
     appt_df["Service_Num"] = appt_df["WIP_SERVCODE"].apply(derive_servcode)
@@ -796,7 +855,7 @@ def compute_nonpms_appointment_metrics(appt_df, service_df):
         service_df["Vehicle Magic"] = service_df["VehMagic WIP"].str.split("-", n=1).str[0].astype(int)
 
     appt_df["Due Date IN"] = pd.to_datetime(appt_df["Due Date IN"], errors="coerce", dayfirst=True)
-    service_df["Service Date"] = pd.to_datetime(service_df["Service_Date"], errors="coerce", dayfirst=True)
+    service_df["Service Date"] = parse_dates(service_df["Service_Date"])
     appt_df["Service_Num"] = appt_df["WIP_SERVCODE"].apply(derive_servcode)
 
     appt_df = appt_df[appt_df["Service_Num"] == 0]
@@ -808,7 +867,7 @@ def compute_nonpms_appointment_metrics(appt_df, service_df):
     events = []
     showed_up = appt_df[appt_df["No Show"] == 0]
     showed_merged = showed_up.merge(service_dedup, on=["Vehicle Magic", "Service_Num"], how="left")
-    showed_merged["Service_Date"] = pd.to_datetime(showed_merged["Service_Date"], errors="coerce", dayfirst=True)
+    showed_merged["Service_Date"] = parse_dates(showed_merged["Service_Date"])
     showed_merged["Due Date IN"] = pd.to_datetime(showed_merged["Due Date IN"], errors="coerce", dayfirst=True)
     showed_merged["delay_days"] = (showed_merged["Service_Date"] - showed_merged["Due Date IN"]).dt.days
 
@@ -872,7 +931,7 @@ def count_service_appointments_booked(appt_df, service, serv_code, filter_date,
     """Count total service appointments booked before filter_date."""
     df = appt_df.copy()
     df = df[df['Vehicle Magic'].isin(service['Vehicle Magic'].unique())]
-    df[booking_date_col] = pd.to_datetime(df[booking_date_col], format="mixed", errors="coerce")
+    df[booking_date_col] = parse_dates(df[booking_date_col])
     filter_date = pd.to_datetime(filter_date)
     df["Service_Num"] = df["WIP_SERVCODE"].apply(derive_servcode)
     df = df[df[booking_date_col] <= filter_date]
@@ -891,7 +950,7 @@ def transform_complaint_features(main_df, service_df):
     main_df.rename(columns={'VIN': 'Vin_No', 'Service_Num': 'Last_PMS_Service'}, inplace=True)
 
     if "Service_Date" in service_df.columns:
-        service_df["Service_Date"] = pd.to_datetime(service_df["Service_Date"], errors="coerce", dayfirst=True)
+        service_df["Service_Date"] = parse_dates(service_df["Service_Date"])
         
     if "Complaint Closed in" not in service_df.columns:
         service_df["Complaint Closed in"] = np.nan
@@ -1041,10 +1100,10 @@ def map_vhc_history(main_df, history_df, svc=None):
     history_df["Survey Score"] = pd.to_numeric(history_df["Survey Score"], errors="coerce")
     history_df["Survey Status"] = history_df["Survey Status"].fillna("Unknown")
 
-    history_df["VHC Completed"] = pd.to_datetime(history_df["VHC Completed"], errors="coerce", dayfirst=True)
+    history_df["VHC Completed"] = parse_dates(history_df["VHC Completed"])
     history_df["VHC Completed"] = history_df["VHC Completed"].replace('-', np.nan)
     history_df["VHC Completed_Flag"] = history_df["VHC Completed"].notna().astype(int)
-    history_df["Service_Date"] = pd.to_datetime(history_df["Service_Date"], errors="coerce")
+    history_df["Service_Date"] = parse_dates(history_df["Service_Date"])
     history_df = history_df.sort_values(["VIN", "Service_Date"])
 
     map_cols = ["VIN", "Service_Num", "Survey Score", "Survey Status", "VHC Completed_Flag"] + vhc_cols
@@ -1141,7 +1200,7 @@ def get_non_pms_events(serv, servcode_desc, mastertrain, last_service_code):
         except Exception:
             raise TypeError("servcode_desc must be filepath, DataFrame or dict")
     serv = serv.copy()
-    serv['Service_Date'] = pd.to_datetime(serv['Service_Date'], dayfirst=True, errors="coerce")
+    serv['Service_Date'] = parse_dates(serv['Service_Date'])
     serv['Revenue'] = pd.to_numeric(serv['Revenue'], errors='coerce').abs()
 
     veh = list(mastertrain['Vehicle Key'].unique())
@@ -1244,7 +1303,7 @@ def get_last_nonpms_mileage(df_nonpms, mastertrain, vin_col="Vin_No", mileage_co
     last_pms_df = mastertrain.query("TargetFlag == 0")[['VIN', 'Last PMS Mileage']].rename(columns={'VIN': 'Vin_No'})
 
     df_nonpms = df_nonpms.copy()
-    df_nonpms[date_col] = pd.to_datetime(df_nonpms[date_col])
+    df_nonpms[date_col] = parse_dates(df_nonpms[date_col])
     df_nonpms = df_nonpms[df_nonpms['Vin_No'].isin(vins)]
     df_nonpms = df_nonpms.sort_values([vin_col, date_col], ascending=[True, False])
     df_nonpms = df_nonpms.query("Service_Num == 0")
@@ -1262,7 +1321,7 @@ def get_last_nonpms_before_targetpms(df_nonpms, vin_col, mileage_col, date_col, 
     last_pms_df = mastertrain.query("TargetFlag == 1")[['VIN', 'Last Service Date - PMS', 'Last PMS Mileage']].rename(columns={'VIN': 'Vin_No'})
 
     df_nonpms = df_nonpms.copy()
-    df_nonpms[date_col] = pd.to_datetime(df_nonpms[date_col])
+    df_nonpms[date_col] = parse_dates(df_nonpms[date_col])
     df_nonpms = df_nonpms[df_nonpms['Vin_No'].isin(vins)]
 
     merged = df_nonpms.merge(last_pms_df, on=vin_col, how="left")
@@ -1284,7 +1343,7 @@ def get_last_nonpms_mileagepred(df_nonpms, svc, mastertrain, vin_col="Vin_No", m
     last_pms_df = mastertrain[['VIN', 'Last PMS Mileage']].rename(columns={'VIN': 'Vin_No'})
 
     df_nonpms = df_nonpms.copy()
-    df_nonpms[date_col] = pd.to_datetime(df_nonpms[date_col])
+    df_nonpms[date_col] = parse_dates(df_nonpms[date_col])
     df_nonpms = df_nonpms.query("Service_Num <= @svc")
     df_nonpms = df_nonpms[df_nonpms['Vin_No'].isin(vins)]
     df_nonpms = df_nonpms.sort_values([vin_col, date_col], ascending=[True, False])

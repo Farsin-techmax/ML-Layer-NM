@@ -2,6 +2,9 @@
 import numpy as np
 import pandas as pd
 
+from date_utils import parse_dates
+from features import resolve_service_num
+
 SERV_HISTORY = "data/Service_History_Q2-2026.csv"
 EDA_MASTER = "data/EDA Datasheet Till 2025.csv"
 
@@ -26,11 +29,9 @@ class MilestoneHistory:
 
         serv = pd.read_csv(serv_path, low_memory=False, encoding='ISO-8859-1',
                            usecols=['Vin_No', 'Service_Date', 'Description', 'Mileage'])
-        serv['Service_Date'] = pd.to_datetime(serv['Service_Date'], format='mixed',
-                                              dayfirst=True, errors='coerce')
+        serv['Service_Date'] = parse_dates(serv['Service_Date'])
         serv['Mileage'] = pd.to_numeric(serv['Mileage'], errors='coerce')
-        serv['Service_Num'] = serv['Description'].apply(extract_k)
-        serv['Service_Num'] = np.where(serv['Description'] == '<=10', 10, serv['Service_Num'])
+        serv['Service_Num'] = resolve_service_num(serv)
         serv = serv.dropna(subset=['Service_Date'])
 
         # one row per (VIN, milestone): the visit that completed it
@@ -43,8 +44,8 @@ class MilestoneHistory:
         master = pd.read_csv(master_path, low_memory=False,
                              usecols=['VIN', 'Invoice date', 'First Service Date'])
         master = master.drop_duplicates(subset='VIN')
-        inv = pd.to_datetime(master['Invoice date'], format='mixed', dayfirst=True, errors='coerce')
-        fsd = pd.to_datetime(master['First Service Date'], format='mixed', dayfirst=True, errors='coerce')
+        inv = parse_dates(master['Invoice date'])
+        fsd = parse_dates(master['First Service Date'])
         master['FirstSrvDate'] = inv.fillna(fsd)
         first_npms = (serv[serv['Service_Num'] < 10].groupby('Vin_No')['Service_Date'].min()
                       .rename('Date_first_npms'))
@@ -63,8 +64,7 @@ class MilestoneHistory:
     def features_for(self, vins, cutoffs):
         """Features for each (vin, cutoff) pair. Returns a frame indexed like `vins`."""
         rows = pd.DataFrame({'Vin_No': pd.Series(vins).values,
-                             'cutoff': pd.to_datetime(pd.Series(cutoffs).values,
-                                                      format='mixed', dayfirst=True, errors='coerce')})
+                             'cutoff': parse_dates(pd.Series(cutoffs))})
         rows['_row'] = np.arange(len(rows))
         # rows with no usable cutoff fall back to "everything in the history"
         rows['cutoff'] = rows['cutoff'].fillna(pd.Timestamp.max)
