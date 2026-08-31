@@ -28,6 +28,19 @@ from dateutil.relativedelta import relativedelta
 from collections import Counter, defaultdict
 
 
+def _debug(msg):
+    """Progress trace for avg_mileage_interval_pms(). Off unless PMS_DEBUG is set.
+
+    These calls used to append to debug.txt unconditionally on every invocation. debug.txt is a
+    tracked file, so any feature-engineering run left the working tree dirty with noise nobody
+    reads. Enable with:  set PMS_DEBUG=1  (PowerShell: $env:PMS_DEBUG=1)
+    """
+    if os.environ.get("PMS_DEBUG"):
+        with open("debug.txt", "a") as fh:
+            fh.write(msg + "\n")
+
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # 1. PARSING & UTILITIES
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -175,25 +188,25 @@ def derive_pms_mileage_features(serv1, dfpmsdate, last_service_code, svc=None):
              Otherwise applies skipped_blocks multiplier.
     """
     dfpmsmil = serv1[['Vin_No', 'Service_Num', 'Mileage']].copy()
-    open("debug.txt", "a").write("1. Filtering\\n")
+    _debug("1. Filtering")
     upper = svc if svc is not None else last_service_code
     if svc is not None:
         dfpmsmil = dfpmsmil.query('Service_Num > 0 and Service_Num <= @upper')
     else:
         dfpmsmil = dfpmsmil.query('Service_Num > 0 and Service_Num < @last_service_code')
 
-    open("debug.txt", "a").write("2. Groupby Diff\\n")
+    _debug("2. Groupby Diff")
     dfpmsmil = dfpmsmil.copy()
     dfpmsmil['Mileage_Diff'] = dfpmsmil.groupby('Vin_No')['Mileage'].diff()
     dfpmsmil['Mileage_Diff'] = dfpmsmil['Mileage_Diff'].fillna(dfpmsmil['Mileage'])
-    open("debug.txt", "a").write("3. Groupby Mean\\n")
+    _debug("3. Groupby Mean")
     avg_mileage_interval = (
         dfpmsmil.groupby('Vin_No')['Mileage_Diff']
         .mean()
         .reset_index(name='Avg_Mileage_Interval_PMS')
     )
 
-    open("debug.txt", "a").write("4. Merges\\n")
+    _debug("4. Merges")
     avg_mileage_interval = avg_mileage_interval.merge(
         dfpmsdate[['Vin_No', 'SinglePMS']], on='Vin_No', how='left'
     )
@@ -201,7 +214,7 @@ def derive_pms_mileage_features(serv1, dfpmsdate, last_service_code, svc=None):
     df_max_service = dfpmsmil.groupby("Vin_No", as_index=False)["Service_Num"].max()
     avg_mileage_interval = avg_mileage_interval.merge(df_max_service, on='Vin_No', how='left')
 
-    open("debug.txt", "a").write("5. Replacement Means\\n")
+    _debug("5. Replacement Means")
     replacement_means = (
         avg_mileage_interval.query("SinglePMS == 0")
         .groupby('Service_Num')['Avg_Mileage_Interval_PMS']
@@ -216,7 +229,7 @@ def derive_pms_mileage_features(serv1, dfpmsdate, last_service_code, svc=None):
         mapped_means,
         avg_mileage_interval['Avg_Mileage_Interval_PMS']
     )
-    open("debug.txt", "a").write("6. Return\\n")
+    _debug("6. Return")
     # For prediction first-service (svc==1), return early without skipped_blocks
     if svc is not None and svc == 1:
         return avg_mileage_interval.drop(columns=['SinglePMS', 'Service_Num'])
@@ -487,6 +500,39 @@ def compute_service_features(serv, filterdate, last_service_num=None):
         .merge(pms_agg, on='Vin_No', how='left')
     )
     return result.drop('Last_NonPMS_Date', axis=1).fillna(0)
+
+
+def derive_pms_frequency(serv, filterdate, min_years=1.0):
+    """Non-leaky replacement for EDA's 'Service Frequency': PMS visits per year of tenure,
+    derived from service history and cut at the training cutoff.
+
+    Caller must pass `serv` already filtered to PMS visits before the target milestone and before
+    the cutoff -- process_service_data does this upstream (Service_Date <= filterdate,
+    Service_Num < last_service_code, Description != 'Others'), so counting rows here needs no
+    extra filtering. A VIN with zero prior PMS visits simply does not appear in `serv` and is
+    absent from the result; callers must fillna(0) after merging.
+
+    Returns one row per Vin_No:
+      PMS_Count_Prior       -- count of qualifying prior PMS visits
+      Years_Since_First_PMS -- tenure since the VIN's first PMS, floored at `min_years` so a
+                                single recent visit cannot produce an inflated rate
+      PMS_Freq_PerYear      -- PMS_Count_Prior / Years_Since_First_PMS
+    """
+    serv = serv.copy()
+    serv['Service_Date'] = pd.to_datetime(serv['Service_Date'], errors='coerce')
+    serv = serv.dropna(subset=['Service_Date'])
+
+    reference_date = pd.to_datetime(filterdate)
+
+    grouped = serv.groupby('Vin_No')['Service_Date'].agg(
+        PMS_Count_Prior='count', First_PMS_Date='min',
+    ).reset_index()
+
+    years = (reference_date - grouped['First_PMS_Date']).dt.days / 365.25
+    grouped['Years_Since_First_PMS'] = years.clip(lower=min_years)
+    grouped['PMS_Freq_PerYear'] = grouped['PMS_Count_Prior'] / grouped['Years_Since_First_PMS']
+
+    return grouped[['Vin_No', 'PMS_Freq_PerYear', 'PMS_Count_Prior', 'Years_Since_First_PMS']]
 
 
 def calculate_revenue_spend(df, last_service):
@@ -1435,26 +1481,136 @@ def clean_parts(x):
     )
 
 def compute_pms_delay(df, target_milestone):
+    """Return a FRAME of four candidate PMS_Delay definitions, for A/B on identical rows.
+
+    All four are "services behind schedule" = expected - actual. They differ in where each term
+    comes from, and every difference is a leak question.
+
+      PMS_Delay            EDAexp - EDAact               legacy / current production
+      PMS_Delay_Doc        EDAexp - EDAact - TargetFlag  the doc's turn-up -1
+      PMS_Delay_DerivedA   EDAexp - sum(has_x)           actual from cutoff-bound history
+      PMS_Delay_DerivedB   2*YSFP - sum(has_x)           both terms from cutoff-bound history
+
+    THE ACTUAL TERM. Measured 2026-08-16: Vehicle_Key_Actual_Service == sum(has_x) + TargetFlag,
+    to three decimals, on both matrices --
+
+        60k neg 2.506/2.501, 60k pos 3.363/4.350 (gap 0.987)
+        20k neg 1.000/1.000, 20k pos 0.720/1.720 (gap 1.000)
+
+    i.e. the EDA count includes the target service for turn-ups and only for turn-ups. So the
+    legacy formula ALREADY carries a -1 on positives, implicitly; PMS_Delay_Doc makes it -2.
+    sum(has_x) is that same count with the label term removed.
+
+    THE EXPECTED TERM. Vehicle_Key_ExpectedServices == 2 * `Vehicle Age` -- 53.2% exact, 99.90%
+    within 1 (a semi-annual schedule; Vehicle Age is an integer 0-10). `Vehicle Age` is in
+    LEAK_COLS, so PMS_Delay smuggles it back in exactly as it smuggles Vehicle_Key_Actual_Service
+    back in. It is also measured at EXTRACT, not at the cutoff: reproducing Vehicle Age as
+    floor((ref - Invoice date)/365.25) matches 4.88% at ref=2025-12-31 (the training cutoff) but
+    90.44% at ref=2026-12-06 (the extract). Re-deriving from sale date is not viable -- Invoice
+    date parses for only 60,411/130,759 EDA rows (46%) -- but Years_Since_First_PMS, built by
+    derive_pms_frequency() and anchored on filterdate, is 100% populated, so 2*YSFP stands in.
+
+    A CONSTANT expected term (target_milestone / 10) was used here until 2026-08-12. That made
+    PMS_Delay a pure linear function of Vehicle_Key_Actual_Service -- measured correlation exactly
+    -1.0000 -- and it agreed with the legacy definition only 0.4346. On the 20k Q1 test set the
+    rule `PMS_Delay <= 0` then reproduced TargetFlag on 98.84% of rows, beating the trained model.
+    Do not reintroduce the constant.
+
+    Caller must invoke this while Vehicle_Key_ExpectedServices is still present -- both pipelines
+    drop it later (refactored:833 / legacy:2675) -- and after the has_x and Years_Since_First_PMS
+    merges. Selection of which variant reaches a model happens later, in
+    pms_model.select_pms_delay_variant(); this function only emits the candidates.
+
+    20k CAVEAT: only has_10 exists (range(10, 20, 10)), so sum(has_x) is 0/1 and the derived
+    variants are coarse there. The 1k service (Description == '1') is off the 10k grid and has no
+    flag of its own.
     """
-    Computes PMS Delay cleanly for a given target milestone (e.g., 20 for 20k service).
-    
-    Expected services are defined by the milestone itself 
-    (e.g., target_milestone = 20 means 20k service, so expected services = 2).
-    
-    PMS Delay = Expected Services - Actual Services
-    """
-    expected_services = target_milestone / 10
-    
+    out = pd.DataFrame(index=df.index)
+
     if 'Vehicle_Key_Actual_Service' in df.columns:
         actual_services = pd.to_numeric(df['Vehicle_Key_Actual_Service'], errors='coerce').fillna(0)
     elif 'Service_Num' in df.columns:
         actual_services = pd.to_numeric(df['Service_Num'], errors='coerce').fillna(0)
     else:
         actual_services = pd.Series(0, index=df.index)
-        
-    pms_delay = expected_services - actual_services
-    
-    return pms_delay
+
+    if 'Vehicle_Key_ExpectedServices' in df.columns:
+        expected_services = pd.to_numeric(df['Vehicle_Key_ExpectedServices'], errors='coerce')
+        n_missing = int(expected_services.isna().sum())
+        if n_missing:
+            # Per-row fallback only. Filling the whole column with the constant would silently
+            # restore the leaky definition, so say so loudly when it happens at all.
+            print(f"WARNING compute_pms_delay: Vehicle_Key_ExpectedServices missing for "
+                  f"{n_missing}/{len(df)} rows; those fall back to the constant "
+                  f"{target_milestone / 10:g}")
+            expected_services = expected_services.fillna(target_milestone / 10)
+    else:
+        print("WARNING compute_pms_delay: Vehicle_Key_ExpectedServices absent -- falling back to "
+              "the CONSTANT expected term. PMS_Delay will be a relabelled copy of "
+              "Vehicle_Key_Actual_Service (a label leak). Fix the caller.")
+        expected_services = pd.Series(target_milestone / 10, index=df.index)
+
+    out['PMS_Delay'] = expected_services - actual_services
+
+    if 'TargetFlag' in df.columns:
+        out['PMS_Delay_Doc'] = out['PMS_Delay'] - pd.to_numeric(
+            df['TargetFlag'], errors='coerce').fillna(0)
+    else:
+        # Inference frames have no label. Emitting the column unchanged keeps the schema stable;
+        # emitting a zero-shifted copy would silently make the variant a different feature.
+        print("WARNING compute_pms_delay: TargetFlag absent -- PMS_Delay_Doc falls back to "
+              "PMS_Delay. Expected at inference, a bug during training.")
+        out['PMS_Delay_Doc'] = out['PMS_Delay']
+
+    has_cols = [f'has_{x}' for x in range(10, target_milestone, 10) if f'has_{x}' in df.columns]
+    if has_cols:
+        prior = df[has_cols].apply(pd.to_numeric, errors='coerce').fillna(0).sum(axis=1)
+        out['PMS_Delay_DerivedA'] = expected_services - prior
+
+        if 'Years_Since_First_PMS' in df.columns:
+            ysfp = pd.to_numeric(df['Years_Since_First_PMS'], errors='coerce').fillna(0)
+            out['PMS_Delay_DerivedB'] = (2 * ysfp).clip(0, 21) - prior
+        else:
+            print("WARNING compute_pms_delay: Years_Since_First_PMS absent -- skipping "
+                  "PMS_Delay_DerivedB. Run derive_pms_frequency() and merge it first.")
+    else:
+        # Emitting zeros here would make a derived variant look like a leak-free copy of the
+        # expected term. Skip the columns instead so the omission is visible downstream.
+        print(f"WARNING compute_pms_delay: no has_* columns for milestone {target_milestone} -- "
+              "skipping PMS_Delay_DerivedA and _DerivedB. Merge the milestone flags first.")
+
+    return out
+
+
+#: Every column compute_pms_delay() can emit. The frame carries all of them through feature-eng;
+#: pms_model.select_pms_delay_variant() collapses them to one named `PMS_Delay` at train/score time.
+PMS_DELAY_COLS = ['PMS_Delay', 'PMS_Delay_Doc', 'PMS_Delay_DerivedA', 'PMS_Delay_DerivedB']
+
+
+#: Median months from first service to each milestone, measured 2026-08-16 over the full
+#: Service_History_Q2-2026 file (14,972-47,851 vehicles per milestone, lags clipped to 0-180 months).
+#: The hardcoded schedule assumes 6 months per 10k; reality is 3.25-4.40 and drifts DOWN as the
+#: milestone rises, so the error compounds: 12 vs 8.8 months at 20k, 36 vs 22.1 at 60k, 60 vs 32.5
+#: at 100k. That bias is why --label-mode window lost AUC -- it filtered on due dates that ran up to
+#: a year late, worst at 40k/60k. See the CLAUDE.md gotcha.
+MILESTONE_MONTHS_CALIBRATED = {20: 9, 30: 12, 40: 16, 50: 19, 60: 22, 70: 25, 80: 27, 90: 30,
+                               100: 32}
+
+
+def expected_milestone_months(milestone, date_model='schedule'):
+    """Months from first service to when `milestone` is expected. Both pipelines must agree.
+
+    'schedule'   -- 6 months per 10k, the original hardcoded rule. Default, so nothing moves
+                    unless asked.
+    'calibrated' -- the measured medians above, falling back to the schedule for any milestone not
+                    in the table.
+    """
+    if date_model not in ('schedule', 'calibrated'):
+        raise ValueError(f"date_model must be 'schedule' or 'calibrated', got {date_model!r}")
+    schedule = int(milestone / 10) * 6
+    if date_model == 'calibrated':
+        return MILESTONE_MONTHS_CALIBRATED.get(int(milestone), schedule)
+    return schedule
 
 from sklearn.metrics import silhouette_score
 
@@ -1526,7 +1682,9 @@ def hierarchical_gower_clustering(dfmain, mergedf,feat, k_min=2, k_max=10, metho
         "Current Age": "mean",
         "Avg_Service_Interval_PMS": "mean",
         "nNPMS": "mean",
-        "Service Frequency": "mean",
+        # 'Service Frequency' (EDA) replaced 2026-08-13 by the derived, non-leaky
+        # 'PMS_Freq_PerYear' -- see derive_pms_frequency().
+        "PMS_Freq_PerYear": "mean",
     }
     # Optional columns — add only if they exist in dfmain
     _mode_fn = lambda x: x.mode()[0] if not x.mode().empty else np.nan
@@ -1556,12 +1714,19 @@ def hierarchical_gower_clustering(dfmain, mergedf,feat, k_min=2, k_max=10, metho
     gower_condensed = squareform(gower_dist, checks=False)
     silhouette_scores = []
     K = range(k_min, k_max+1)
-    
+    # silhouette_score requires 2 <= n_labels <= n_samples-1. n_samples here is the number of
+    # DISTINCT `feat` categories (groupby above), not the cohort's row count -- a small quarterly
+    # cohort (candidates mode reaches back to 2016, with cohorts as small as ~7-165 rows) can easily
+    # have fewer than k_max+1 distinct Nationality/Model/Variant values, so a fixed range(2, 11)
+    # crashes for k > n_samples-1. Harmless to skip: best_k is hardcoded to 4 below, so these scores
+    # are never actually used to choose anything -- this loop only needs to not crash.
+    n_samples = gower_dist.shape[0]
+
     for k in K:
         linkage_matrix = linkage(gower_condensed, method=method)
         labels = fcluster(linkage_matrix, k, criterion="maxclust")
-        
-        if k > 1:
+
+        if 1 < k <= n_samples - 1:
             silhouette_scores.append(silhouette_score(gower_dist, labels, metric="precomputed"))
         else:
             silhouette_scores.append(None)

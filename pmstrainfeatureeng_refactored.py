@@ -3,6 +3,7 @@ import numpy as np
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from features import extract_k1, extract_kk
+from due_date import burn_rate_date, earliest_date
 
 
 
@@ -88,16 +89,60 @@ def prepare_pms_datasets(
     year,
     target_range=(0.35, 0.45),
     output_prefix="TestTrain",
+    label_mode="ever",
+    label_start=None,
+    date_model="schedule",
+    drop_mileage_cap=False,
 ):
+    """Build the labelled training cohort. Two labelling rules, `label_mode`:
+
+    'ever' (default, the POC convention decided 2026-08-12)
+    - Positives: ALL vehicles whose EDA master sheet shows they completed the target PMS, with NO
+      date condition.
+    - Negatives: vehicles pending/overdue for the target PMS within a sliding date window.
+    - The while loop slides that window until the positive ratio lands in target_range.
+
+    'window' (added 2026-08-16)
+    - Positives AND negatives must both be DUE in the same window: Expected{svc}Date within
+      [start_date, quarter_end]. Label is then simply "did they complete it".
+    - The sliding loop is SKIPPED -- the base rate is whatever the cohort naturally gives. Tuning
+      the window to hit a target ratio would defeat the point, since the window is now what defines
+      both classes.
+
+    Why 'window' exists. Under 'ever' the positives are drawn from all time while the negatives come
+    from one window, so the two groups differ systematically in how much service history they have,
+    and history-derived features end up carrying the OPPOSITE sign in training to the one they have
+    at test time. Measured 2026-08-16 on 20k: `has_10` raw AUC 0.3602 train vs 0.6885 test,
+    `PMS_Count_Prior` 0.3792 vs 0.7224; group-permuting the whole schedule-keeping family RAISES
+    20k test AUC by 0.19. The test sets never had this problem -- create_test_cohort() already
+    builds a due-in-window cohort -- so 'window' is what makes training match test.
+
+    `label_start` (window mode only) overrides the start of that shared window. The default from
+    get_quarter_dates() is Jan 1 of the previous year, which on 20k leaves only 1,343 rows once the
+    positives are windowed too -- too few to train on. Widening it is legitimate: what matters is
+    that BOTH classes see the same window, not how long it is.
+
+    'all' (added 2026-08-17)
+    - Positives unchanged: every vehicle that ever completed the milestone, no date filter.
+    - Negatives: every vehicle still pending for it, ALSO with no date filter -- the due-date window
+      is simply not applied. The definitional filters stay (`Service_Num < svc`, not already past
+      via `dfafter`, and the mileage cap unless `drop_mileage_cap`), because without them a
+      "negative" is not a pending vehicle at all.
+    - The sliding loop is SKIPPED. With the window gone there is nothing left to slide, and the base
+      rate is whatever the two full populations give (20k: 7,591 pos / 6,884 neg = 52.4%).
+
+    This is the mirror image of 'window'. Both fix the same asymmetry -- under 'ever' the positives
+    are drawn from all time while the negatives come from one quarter -- but 'window' fixes it by
+    restricting the positives, and 'all' by releasing the negatives. 'all' keeps far more data
+    (14,475 rows on 20k vs 8,046) and needs no ratio tuning.
     """
-    Original target labelling and sampling:
-    - Positives: ALL vehicles whose EDA master sheet shows they completed the target PMS
-    - Negatives: Vehicles pending/overdue for the target PMS within a sliding date window
-    - NotTurnUp: Vehicles that skipped the target PMS (did a higher service without the target)
-    - While loop adjusts the date window until positive ratio is within target_range
-    """
+    if label_mode not in ("ever", "window", "all"):
+        raise ValueError(f"label_mode must be 'ever', 'window' or 'all', got {label_mode!r}")
     start_date_dt, quarter_end_dt = get_quarter_dates(selected_quarter, year)
-    
+    if label_mode == "window" and label_start:
+        start_date_dt = pd.to_datetime(label_start)
+        print(f"[window] shared due-date window overridden to start {start_date_dt.date()}")
+
     print(f"Processing for Quarter End: {quarter_end_dt.date()}")
     
     # Load main dataframe
@@ -135,7 +180,19 @@ def prepare_pms_datasets(
         # POSITIVES
         turnup = df.query(f"`Last Service - PMS` == '{svc}'").copy()
         turnup["TargetFlag"] = 1
-        
+
+        # In 'window' mode the positives must sit in the SAME due-date window as the negatives, so
+        # they need an Expected{svc}Date of their own. Built exactly as the negatives' is below
+        # (:165): first-service date + 6 months per 10k of milestone. Under 'ever' this column is
+        # left unset and back-filled from `Last Service Date - PMS` after the concat, as before.
+        if label_mode == "window":
+            turnup["FirstSrvDate"] = turnup["Invoice date"].fillna(turnup["First Service Date"])
+            turnup[f"Expected{svc}Date"] = (turnup["FirstSrvDate"]
+                                            + pd.DateOffset(months=expected_milestone_months(
+                                                svc_num, date_model)))
+            n_dated = int(turnup[f"Expected{svc}Date"].notna().sum())
+            print(f"  [window] {len(turnup)} positives, {n_dated} with a usable expected date")
+
         df_target = df[~df["VIN"].isin(turnup["VIN"].unique())]
         
         # SKIPPED VINs
@@ -161,7 +218,7 @@ def prepare_pms_datasets(
         missed = missed[~missed["VIN"].isin(turnup["VIN"].unique())].copy()
         missed["FirstSrvDate"] = missed["Invoice date"].fillna(missed["First Service Date"])
         missed["Service_Num"] = missed["Last Service - PMS"].apply(extract_k1)
-        months_to_add = int(svc_num / 10) * 6
+        months_to_add = expected_milestone_months(svc_num, date_model)
         missed[f"Expected{svc}Date"] = missed["FirstSrvDate"] + pd.DateOffset(months=months_to_add)
         
         missed = missed[missed["Vehicle Service Status"].isin(["InActive", "Lapsed", "Active"])]
@@ -170,22 +227,46 @@ def prepare_pms_datasets(
         pending_base = pending_base[~pending_base["VIN"].isin(dfafter)]
         pending_base = pending_base.drop(["FirstSrvDate"], axis=1)
         milthreshold = svc_num * 1000
-        pending_base = pending_base.query("`Last Service Mileage` < @milthreshold")
+        if drop_mileage_cap:
+            # `Last Service Mileage` is an EDA current-state field, so this cap excludes vehicles
+            # that are PAST the milestone mileage but never had the service -- i.e. the most overdue
+            # customers in the file. On 20k it removes 1,571 of 8,455 candidate negatives.
+            print(f"  [mileage cap OFF] keeping {len(pending_base)} negatives; the cap would have "
+                  f"cut them to {len(pending_base.query('`Last Service Mileage` < @milthreshold'))}")
+        else:
+            pending_base = pending_base.query("`Last Service Mileage` < @milthreshold")
         
         while iteration < max_iterations:
             print(f'{svc} - Iteration {iteration + 1}: Start Date = {start_date_adj.date()}')
             
-            pending = pending_base[
-                (pending_base[f"Expected{svc}Date"] >= start_date_adj) &
-                (pending_base[f"Expected{svc}Date"] <= quarter_end_dt)
-            ]
+            # 'all': no due-date window on the negatives at all, matching the positives, which have
+            # never had one. This is the whole point of the mode -- the window is the single filter
+            # that made the two classes come from different time periods.
+            if label_mode == "all":
+                pending = pending_base
+            else:
+                pending = pending_base[
+                    (pending_base[f"Expected{svc}Date"] >= start_date_adj) &
+                    (pending_base[f"Expected{svc}Date"] <= quarter_end_dt)
+                ]
             
             # ── Combine Positives + Negatives ──
             if not pending.empty:
                 pending = pending.copy()
                 pending["TargetFlag"] = 0
-            
-            finaltr = pd.concat([turnup, pending], axis=0)
+
+            # 'window': cut the positives to the same due-date window as the negatives, so both
+            # classes answer "due in this window -- did they turn up?" rather than comparing
+            # all-time turn-ups against one quarter's pending list.
+            if label_mode == "window":
+                turnup_w = turnup[
+                    (turnup[f"Expected{svc}Date"] >= start_date_adj) &
+                    (turnup[f"Expected{svc}Date"] <= quarter_end_dt)
+                ].copy()
+            else:
+                turnup_w = turnup
+
+            finaltr = pd.concat([turnup_w, pending], axis=0)
             finaltr[f"Expected{svc}Date"] = finaltr[f"Expected{svc}Date"].fillna(finaltr["Last Service Date - PMS"])
             
             # Calculate ratio
@@ -195,7 +276,23 @@ def prepare_pms_datasets(
                 ratio = 0
             print(f'Target Range: {target_range[0]} to {target_range[1]}')
             print(f'Iteration {iteration + 1}: TargetFlag ratio = {round(ratio * 100, 2)}% | Rows: {len(finaltr)}')
-            
+
+            # 'all': there is no window left to slide, so the loop has nothing to tune. The base
+            # rate is whatever the two full populations give.
+            if label_mode == "all":
+                print(f'  [all] single pass, natural base rate {round(ratio * 100, 2)}% '
+                      f'({int(finaltr["TargetFlag"].sum())} pos / {len(finaltr)} rows) -- '
+                      f'no due-date filter on either class')
+                break
+
+            # 'window': the window now DEFINES both classes, so sliding it to hit a target ratio
+            # would be manufacturing the base rate. Take the cohort as it comes, one pass.
+            if label_mode == "window":
+                print(f'  [window] single pass, natural base rate {round(ratio * 100, 2)}% '
+                      f'({int(finaltr["TargetFlag"].sum())} pos / {len(finaltr)} rows) -- '
+                      f'window {start_date_adj.date()} .. {quarter_end_dt.date()}')
+                break
+
             # Stop if ratio in range
             if target_range[0] <= ratio <= target_range[1]:
                 break
@@ -216,6 +313,300 @@ def prepare_pms_datasets(
     return finaltr
 
 
+def quarter_bounds(year: int, q: int):
+    """(start, end) Timestamps for calendar quarter q of `year`."""
+    start = pd.Timestamp(year=year, month=3 * q - 2, day=1)
+    return start, start + pd.offsets.QuarterEnd(0)
+
+
+def build_history_cohort(df, serv, milestone, q_start, q_end, grace_days=45,
+                         date_model="schedule"):
+    """Label ONE quarterly cohort straight from raw service history.
+
+    This is the 'history' label mode. It exists because the 'ever' mode reads its label from EDA's
+    `Last Service - PMS`, which means the vehicle's MOST RECENT PMS -- so a vehicle that did its 20k
+    and then went on to 30k is neither a positive (last PMS is 30k, not 20k) nor a negative
+    (`Service_Num < 20` fails). Measured on 20k: 52,533 vehicles ever did the service, only 7,591
+    are labelled positive, and 44,991 fall out of the data entirely. The surviving positives are
+    exactly the customers who did their 20k and never came back, which inverts every
+    history-derived feature relative to the test cohorts.
+
+    Here instead:
+      cohort   every vehicle whose expected milestone date lands in [q_start, q_end], that has not
+               already completed THIS milestone before the band opens (nothing left to predict).
+               Vehicles that skipped the milestone and went further ARE kept -- they are the
+               clearest negatives available, and the 'ever' mode discards 25,132 of them on 20k.
+      positive the milestone appears in raw service history inside [q_start - grace, q_end + grace].
+      negative anything else in the cohort.
+
+    `grace_days` is the band either side of the due quarter, 45 by default. It is deliberately
+    tight: it asks "did they turn up roughly when due", not "did they ever turn up". Cost of that
+    choice, measured over the eligible population: the positive rate lands near 22% on 20k
+    (+/-45d around a quarter is ~+/-90d around its centre) and falls to ~6% on 60k. There is no
+    ratio-tuning loop here -- with the band fixed and the window defining both classes, sliding it
+    would just be manufacturing the base rate.
+
+    The caller runs this once per quarter and pairs each cohort with `filter_date=q_start`, so every
+    feature in that cohort is cut before its own due date. That is what makes a multi-year training
+    set safe; see refactored_test_dir/feature_cutoff_audit.md.
+    """
+    grace = pd.Timedelta(days=grace_days)
+    band_lo, band_hi = q_start - grace, q_end + grace
+    months = expected_milestone_months(milestone, date_model)
+
+    c = df.copy()
+    c[f"Expected{milestone}kDate"] = c["FirstSrvDate"] + pd.DateOffset(months=months)
+    c = c[(c[f"Expected{milestone}kDate"] >= q_start) & (c[f"Expected{milestone}kDate"] <= q_end)]
+    c = c[c["Vehicle Service Status"].isin(["InActive", "Lapsed", "Active"])]
+    n_due = len(c)
+
+    at_milestone = serv[serv["Service_Num"] == milestone]
+    # already done before the band opened -> nothing to predict, drop. Mirrors
+    # prepare_test_set.create_test_cohort(), except that it keys on `Service_Num >= milestone`;
+    # here it is `== milestone` on purpose, so skippers stay in as negatives.
+    done_early = set(at_milestone.loc[at_milestone["Service_Date"] < band_lo, "Vin_No"].unique())
+    n_early = int(c["VIN"].isin(done_early).sum())
+    c = c[~c["VIN"].isin(done_early)]
+
+    in_band = set(at_milestone.loc[(at_milestone["Service_Date"] >= band_lo) &
+                                   (at_milestone["Service_Date"] <= band_hi), "Vin_No"].unique())
+    c["TargetFlag"] = c["VIN"].isin(in_band).astype(int)
+
+    # vehicles that never do this milestone at all -- includes the skippers who go straight past it
+    n_skip = int((~c["VIN"].isin(set(at_milestone["Vin_No"].unique()))).sum())
+    print(f"  {q_start.date()}..{q_end.date()}  due {n_due:>6,} | "
+          f"-{n_early:>5,} already done | cohort {len(c):>6,} | "
+          f"pos {int(c['TargetFlag'].sum()):>5,} ({100*c['TargetFlag'].mean():>5.1f}%) | "
+          f"never-did-it {n_skip:>6,}")
+    return c.drop(columns=["FirstSrvDate"], errors="ignore")
+
+
+def build_candidates_cohort(df, serv, milestone, win_start, win_end, grace_days=15,
+                            date_model="schedule"):
+    """Label the FULL 'candidates' cohort in one global vectorised pass.
+
+    due date = whichever comes first of the schedule projection (FirstSrvDate + N months) and the
+    service-1 -> service-10 burn-rate projection (due_date.burn_rate_date). `df` must already be
+    invoice-date-guarded -- FirstSrvDate == a genuine `Invoice date`, never the First Service Date
+    fallback -- and `serv` must carry Service_Num sourced from the raw Service_Code column (see the
+    caller, run_candidates_mode(), for why: it is a different, unvalidated code path from
+    process_service_data()'s own extract_kk(Description)-based Service_Num, computed separately
+    later for feature purposes and not to be confused with this one).
+
+    TargetFlag = 1 if the milestone was completed on or before quarter_end + grace_days, with NO
+    restriction on how early the completion happened -- an "early completer" (already done before
+    the due quarter even opened) is still counted a positive, flagged via EarlyCompleter, per the
+    user's deliberate labelling decision (see the labelling plan's Context / "known weakness"
+    section). This is the one substantive difference from build_history_cohort(), which drops early
+    completers outright rather than keeping+flagging them.
+
+    Ported from and verified byte-for-byte against a scratchpad reference build: 0 due-date
+    mismatches across all 41,983 candidates, 2016Q1-2025Q4, grace 15d -> 23,269 positive / 18,714
+    negative. The reproduction depends on due_date.burn_rate_date() sorting codes {1, 10, milestone}
+    together (a handful of VINs carry two same-day records for the same Service_Num with different
+    Mileage, and the "first visit" tie-break is sensitive to exactly what is sorted together with
+    what) -- see that function's docstring.
+    """
+    vins = df["VIN"].values
+    first_srv = df.set_index("VIN")["FirstSrvDate"].reindex(vins)
+
+    months = expected_milestone_months(milestone, date_model)
+    due_sched = first_srv + pd.DateOffset(months=months)
+
+    # No cutoff restriction on the burn-rate anchor here -- this mirrors the verified reference
+    # build exactly (see due_date.burn_rate_date()'s docstring on why `cutoff` exists at all: it is
+    # a defensive check against a caller passing a looser serv_cut than intended, not something this
+    # global, all-history candidate pass needs to restrict further).
+    cutoff = serv["Service_Date"].max()
+    due_burn = burn_rate_date(vins, serv[["Vin_No", "Service_Date", "Mileage", "Service_Num"]],
+                              milestone, cutoff)
+    due = earliest_date(due_sched, due_burn)
+    due_source = np.where(due_burn.notna().to_numpy() & (due_burn.to_numpy() <= due_sched.to_numpy()),
+                          "burn-rate", "schedule")
+
+    at_milestone = serv[serv["Service_Num"] == milestone]
+    date_ms = (at_milestone.sort_values("Service_Date")
+              .groupby("Vin_No")["Service_Date"].first().reindex(vins))
+
+    ms_col = f"Actual{milestone}kDate"
+    c = df.copy()
+    c[f"Expected{milestone}kDate"] = due.values
+    c["DueSource"] = due_source
+    c[ms_col] = date_ms.values
+    c = c.dropna(subset=[f"Expected{milestone}kDate"])
+
+    inwin = ((c[f"Expected{milestone}kDate"] >= win_start) &
+             (c[f"Expected{milestone}kDate"] <= win_end))
+    c = c[inwin].copy()
+
+    quarter = c[f"Expected{milestone}kDate"].dt.to_period("Q")
+    c["CohortQuarter"] = quarter.astype(str)
+    c["QuarterEnd"] = quarter.dt.end_time.dt.normalize()
+    q_start = quarter.dt.start_time
+
+    grace = pd.Timedelta(days=grace_days)
+    ms = c[ms_col]
+    c["TargetFlag"] = (ms.notna() & (ms <= c["QuarterEnd"] + grace)).astype(int)
+    c["EarlyCompleter"] = (ms.notna() & (ms < q_start)).astype(int)
+
+    print(f"  candidates {len(c):>7,} | pos {int(c['TargetFlag'].sum()):>7,} "
+          f"({100*c['TargetFlag'].mean():>5.1f}%) | early completers "
+          f"{int(c['EarlyCompleter'].sum()):>7,} ({100*c['EarlyCompleter'].mean():>5.1f}%) | "
+          f"burn-rate due {int((c['DueSource']=='burn-rate').sum()):>7,}")
+    return c.drop(columns=["FirstSrvDate"], errors="ignore")
+
+
+def run_candidates_mode(args, milestone, label_suffix, eda_path, service_history_path,
+                        rfm_path, appointdf_path, digidf_path, vhc_path, servcode_path):
+    """Build the 'candidates' training matrix (Stage A+B of the labelling plan).
+
+    Stage A: build_candidates_cohort() labels the WHOLE 2016Q1-2025Q4 (by default) population in one
+    vectorised pass and assigns each candidate to its due quarter (CohortQuarter).
+
+    Stage B: reuses run_history_mode()'s per-quarter discipline -- one process_service_data() call
+    per present quarter, features cut at that quarter's START (not q_start - grace like 'history'
+    mode: here the outcome window only extends FORWARD from the quarter, since early completers are
+    counted from raw history that predates the cutoff and their OWN service record is already
+    excluded from features via serv1's `Service_Num < milestone` filter, so nothing about the
+    labelling window sits inside the feature-cutoff gap). Two changes over run_history_mode(), both
+    from the plan: the service history is read ONCE and passed as a DataFrame (not re-read per
+    quarter), and the 15 EDA current-state columns (refactored_test_dir/eda_currentstate_features.json)
+    are dropped from every quarter's output -- safe to drop only 8 quarters back, unsafe over a
+    10-year span (see feature_cutoff_audit.md).
+    """
+    import time
+    import json as _json
+
+    def _parse_yq(s, name):
+        s = s.upper().strip()
+        if len(s) != 6 or s[4] != 'Q' or not s[:4].isdigit() or s[5] not in '1234':
+            sys.exit(f"--{name} must look like 2016Q1, got {s!r}")
+        return int(s[:4]), int(s[5])
+
+    from_y, from_q = _parse_yq(args.quarters_from or "2016Q1", "quarters-from")
+    to_y, to_q = _parse_yq(args.quarters_to or "2025Q4", "quarters-to")
+    win_start, _ = quarter_bounds(from_y, from_q)
+    _, win_end = quarter_bounds(to_y, to_q)
+    grace_days = args.grace_days
+
+    print(f"\n--- candidates mode: due date in [{win_start.date()}, {win_end.date()}], "
+          f"grace +{grace_days}d ---")
+
+    df = pd.read_csv(eda_path, low_memory=False, encoding="ISO-8859-1")
+    df = df.query("`Last Service - PMS` != '-'").copy()
+    df["Last Service Mileage"] = pd.to_numeric(df["Last Service Mileage"], errors="coerce")
+    df["Last PMS Mileage"] = pd.to_numeric(df["Last PMS Mileage"], errors="coerce")
+    for col in ["Invoice date", "First Service Date", "Last Service Date - PMS",
+                "Last Service Date", "Next Service Date"]:
+        df[col] = pd.to_datetime(df[col].replace("-", pd.NA), format="mixed",
+                                 dayfirst=True, errors="coerce")
+    df["Service_Num"] = df["Last Service - PMS"].apply(extract_k1)
+    df["FirstSrvDate"] = df["Invoice date"].fillna(df["First Service Date"])
+    df = df.dropna(subset=["FirstSrvDate"]).drop_duplicates(subset="VIN")
+
+    # Invoice-date guard: without a genuine sale date, "first service" is merely the first visit
+    # that happens to fall inside the file, and the vehicle may have years of unseen history
+    # (including its own milestone completion) before the file starts. See the labelling plan's
+    # Context section 4 for the measured effect (63.2% "never did a 20k" without a sale date vs
+    # 16.5% with one).
+    n_before_guard = len(df)
+    df = df[df["Invoice date"].notna()].copy()
+    print(f"invoice-date guard: {n_before_guard:,} -> {len(df):,} EDA vehicles "
+          f"({n_before_guard - len(df):,} dropped, no genuine sale date)")
+
+    serv_raw = pd.read_csv(service_history_path, low_memory=False, encoding="ISO-8859-1")
+    serv_raw["Service_Date"] = pd.to_datetime(serv_raw["Service_Date"], format="mixed",
+                                              dayfirst=True, errors="coerce")
+    serv_raw["Mileage"] = pd.to_numeric(serv_raw["Mileage"], errors="coerce")
+    serv_raw = serv_raw.dropna(subset=["Service_Date"])
+    # Raw Service_Code, NOT extract_kk(Description) -- see build_candidates_cohort()'s docstring.
+    # This column is for Stage A candidate labelling only; process_service_data() below recomputes
+    # its OWN Service_Num from Description + the '<=10' fix for feature purposes, independently.
+    serv_raw["Service_Num"] = pd.to_numeric(serv_raw["Service_Code"], errors="coerce")
+    print(f"EDA rows {len(df):,} | service history rows {len(serv_raw):,}\n")
+
+    cohort = build_candidates_cohort(df, serv_raw, milestone, win_start, win_end,
+                                     grace_days=grace_days, date_model=args.date_model)
+
+    ms_col = f"Actual{milestone}kDate"
+    bookkeeping_cols = ["CohortQuarter", "EarlyCompleter", "DueSource", "QuarterEnd", ms_col]
+
+    currentstate_path = "refactored_test_dir/eda_currentstate_features.json"
+    currentstate_cols = _json.load(open(currentstate_path)) if os.path.exists(currentstate_path) else []
+    if currentstate_cols:
+        print(f"\nwill drop {len(currentstate_cols)} EDA current-state columns from every cohort "
+              f"(recomputed per extract; unsafe over a multi-year span -- see feature_cutoff_audit.md)")
+    else:
+        print(f"\nWARNING: {currentstate_path} not found -- EDA current-state columns NOT dropped")
+
+    quarters = sorted(cohort["CohortQuarter"].unique())
+    print(f"\n{len(quarters)} quarters present, {quarters[0]} .. {quarters[-1]}\n\ncohorts:")
+    parts, t_start = [], time.time()
+    for cq in quarters:
+        sub = cohort[cohort["CohortQuarter"] == cq]
+        if len(sub) < 5:
+            print(f"    {cq} skipped -- only {len(sub)} rows")
+            continue
+        y, q = int(cq[:4]), int(cq[5])
+        q_start, q_end = quarter_bounds(y, q)
+        # process_service_data() treats every non-ID object column as a categorical to one-hot
+        # encode, and has no notion of "bookkeeping" -- passing these through would OHE
+        # CohortQuarter/DueSource into junk per-quarter dummies, silently drop Actual{m}kDate
+        # (high-cardinality), and collide on re-merge with EarlyCompleter (an int column, so it
+        # passes through untouched and then gets suffixed _x/_y against the merge below). Strip them
+        # before the call and re-attach by VIN afterward instead of trusting any of that survives.
+        bk = sub[["VIN"] + bookkeeping_cols].set_index("VIN")
+        feats = process_service_data(
+            mastersheet=sub.drop(columns=bookkeeping_cols, errors="ignore"),
+            servhistory=serv_raw, rfm=rfm_path,
+            servcode=servcode_path, appointdf=appointdf_path, digidf=digidf_path, vhc=vhc_path,
+            filter_date=q_start.strftime("%Y-%m-%d"),
+            last_service_code=milestone,
+            is_test=True,   # every row is due AFTER q_start by construction -- the master-sheet
+                            # date filter would otherwise delete the whole cohort
+        )
+        feats = feats.drop(columns=bookkeeping_cols, errors="ignore").merge(
+            bk, left_on="VIN", right_index=True, how="left")
+        if currentstate_cols:
+            feats = feats.drop(columns=[c for c in currentstate_cols if c in feats.columns],
+                               errors="ignore")
+        parts.append(feats)
+        print(f"    {cq} -> {feats.shape[0]:,} rows x {feats.shape[1]} cols "
+              f"({time.time()-t_start:.0f}s elapsed)")
+
+    if not parts:
+        sys.exit("candidates mode produced no cohorts -- check --quarters-from/--quarters-to")
+
+    # Same union-reindex-zero-fill discipline as run_history_mode(): cohorts emit different
+    # one-hot/per-category columns, and a category genuinely absent from a quarter is correctly 0,
+    # not NaN.
+    union = list(dict.fromkeys(c for p in parts for c in p.columns))
+    filled = {}
+    for i, p in enumerate(parts):
+        missing = [c for c in union if c not in p.columns]
+        for c in missing:
+            filled[c] = filled.get(c, 0) + len(p)
+        parts[i] = p.reindex(columns=union, fill_value=0)
+    if filled:
+        print(f"\n{len(filled)} per-category columns absent from at least one cohort, "
+              f"zero-filled there ({sum(filled.values()):,} cells):")
+        for c, n in sorted(filled.items(), key=lambda kv: -kv[1])[:10]:
+            print(f"    {c:<45} {n:>6,} rows")
+
+    out = pd.concat(parts, axis=0, ignore_index=True, sort=False)
+    dupes = out["VIN"].duplicated().sum()
+    if dupes:
+        print(f"WARNING: {dupes} duplicate VINs across cohorts -- keeping the earliest")
+        out = out.drop_duplicates(subset="VIN", keep="first")
+
+    path = f"refactored_test_dir/final_processed_{milestone}k{label_suffix}.csv"
+    out.to_csv(path, index=False)
+    print(f"\nwrote {path}")
+    print(f"  {len(out):,} rows x {out.shape[1]} cols | "
+          f"positives {int(out['TargetFlag'].sum()):,} ({100*out['TargetFlag'].mean():.1f}%) | "
+          f"early completers {int(out['EarlyCompleter'].sum()):,} "
+          f"({100*out['EarlyCompleter'].mean():.1f}%) | {time.time()-t_start:.0f}s total")
+    print(f"  rows per cohort:\n{out['CohortQuarter'].value_counts().sort_index().to_string()}")
 
 
 """
@@ -284,7 +675,7 @@ def process_service_data(mastersheet: str,servhistory: str, rfm: str, appointdf:
         logger.info(f'Filter date: {filterdate}')
         
         # Validate input files
-        if not os.path.exists(servhistory):
+        if not isinstance(servhistory, pd.DataFrame) and not os.path.exists(servhistory):
             logger.error(f"Service history file not found: {servhistory}")
             raise FileNotFoundError(f"Service history file not found: {servhistory}")
             
@@ -319,7 +710,14 @@ def process_service_data(mastersheet: str,servhistory: str, rfm: str, appointdf:
         # Read and process service history
         try:
             logger.info("Reading service history data")
-            serv1 = pd.read_csv(servhistory,low_memory=False) #Input Service History
+            # Accept a preloaded DataFrame the same way `mastersheet` already does, so a caller
+            # running many process_service_data() calls over the same history (e.g. one per
+            # quarterly cohort) does not re-read and re-parse a 124MB CSV every time. `.copy()`
+            # because this function mutates serv1 in place below.
+            if isinstance(servhistory, pd.DataFrame):
+                serv1 = servhistory.copy()
+            else:
+                serv1 = pd.read_csv(servhistory,low_memory=False) #Input Service History
             logger.debug(f"Service history initial shape: {serv1.shape}")
             
             logger.info("Processing service history data")
@@ -415,6 +813,9 @@ def process_service_data(mastersheet: str,servhistory: str, rfm: str, appointdf:
             logger.info("Calculating NPMS/PMS Revenue metrics")
             revenu = compute_service_features(servM,filterdate ,last_service_num=last_service_code)
 
+            logger.info("Calculating PMS frequency (non-leaky replacement for EDA Service Frequency)")
+            pms_freq = derive_pms_frequency(serv, filterdate)
+
         except Exception as e:
             logger.error(f"Error in feature derivation: {str(e)}")
             raise
@@ -488,6 +889,7 @@ def process_service_data(mastersheet: str,servhistory: str, rfm: str, appointdf:
                 (avg_mileage_interval_non_pms, 'Mileage intervals NPMS'),
                 (npmsrevenue, 'NPMS revenue'),
                 (revenu, 'PMS/NPMS revenue'),
+                (pms_freq, 'PMS frequency'),
                 (vin_branch_pivot, 'Branch visits'),
                 (avg_monthly_interval1, 'Monthly intervals'),
                 (freq_npms, 'NPMS frequency'),
@@ -516,7 +918,8 @@ def process_service_data(mastersheet: str,servhistory: str, rfm: str, appointdf:
             logger.info("Handling missing values")
             fill_columns = ['nNPMS', 'npmsRevenue', 'freq_NPMS', 'unique_branch_serviced','otherbranch_services','SinglePMS',
                             'has_complaint_history','num_past_complaints','avg_complaint_resolution_days','max_complaint_resolution_days',
-                            'recent_complaint_resolution_days'] + top_branches
+                            'recent_complaint_resolution_days',
+                            'PMS_Freq_PerYear', 'PMS_Count_Prior', 'Years_Since_First_PMS'] + top_branches
             newserv20ka[fill_columns] = newserv20ka[fill_columns].fillna(0)
             newserv20ka[revenu.columns[1:]] = newserv20ka[revenu.columns[1:]].fillna(0)
             # Final processing
@@ -625,14 +1028,33 @@ def process_service_data(mastersheet: str,servhistory: str, rfm: str, appointdf:
             filtered_dfnew = filtered_dfnew.merge(rfmdf[['Customer ID','RFM_segments']],on=['Customer ID'],how='left')
             filtered_dfnew['Number of Cylinders'] = filtered_dfnew['Number of Cylinders'].astype('object')
             filtered_dfnew = filtered_dfnew.rename(columns={f'Expected{last_service_code}kDate':f'Next{last_service_code}K_Due'})
+            # 'Vehicle Age' was in this list until 2026-08-12; legacy/pmstrainfeatureEng.py:2520-2523
+            # is otherwise identical and does NOT drop it. Removed so the column survives
+            # feature-eng and can actually be evaluated -- it is plausible behavioural signal
+            # (older vehicles service differently), not obviously a label leak.
+            # NOTE it is still listed in LEAK_COLS (pms_model.py), so retrain.py drops it before
+            # training. Take it out of there too once its leakiness has been measured.
+            # 'Service Frequency' added 2026-08-13: the EDA column is a current-state snapshot and
+            # leaks the outcome (test AUC 0.9449 alone, vs 0.8300 on train -- stronger on unseen
+            # data is the signature of post-outcome information). Replaced by the non-leaky
+            # PMS_Freq_PerYear derived above from pre-cutoff service history.
             rem = ['New / Used Category','Current Customer','First Service Date',
                 'Last Service Date', 'Next Service Date','Vehicle Lifetime in Years','MileagePMS',
                 'Last Service - PMS','Sale Invoice Year','Invoice date','Target Revenue','Potential Revenue',
-                  'Final Revenue', 'Vehicle Age']
+                  'Final Revenue', 'Service Frequency']
             filtered_dfnew= filtered_dfnew.drop(rem,axis=1,errors='ignore')
-            
-            # Compute PMS_Delay accurately
-            filtered_dfnew['PMS_Delay'] = compute_pms_delay(filtered_dfnew, last_service_code)
+
+            # PMS_Delay must be computed HERE, while Vehicle_Key_ExpectedServices is still present
+            # (it is dropped at line ~833). See compute_pms_delay() for why the expected term has to
+            # be that per-vehicle column and not a constant.
+            # All four candidate definitions are emitted in ONE run so the A/B compares
+            # byte-identical rows -- no re-derivation, no seed drift. Requires has_* (built :347,
+            # merged :534) and Years_Since_First_PMS (:494 -> :534), both present by now.
+            # pms_model.select_pms_delay_variant() collapses them to one column at train/score time.
+            pms_delay_variants = compute_pms_delay(filtered_dfnew, last_service_code)
+            for _c in pms_delay_variants.columns:
+                filtered_dfnew[_c] = pms_delay_variants[_c]
+            logger.info(f"PMS_Delay variants emitted: {list(pms_delay_variants.columns)}")
             
             pms = filtered_dfnew
             logger.info("Detecting columns with '-' placeholders (pass 1)")
@@ -689,8 +1111,10 @@ def process_service_data(mastersheet: str,servhistory: str, rfm: str, appointdf:
             rfmpms= pms[['Vehicle Key','RFM_segments']]
 
 
+            # 'Service Frequency' removed 2026-08-13 -- the column no longer exists at this point
+            # (dropped above in `rem`), and pms[i] here indexes directly so it would KeyError.
             obint = ['Total Promoter','Total Passive','Total Detractor','Total Survey',
-            'CC','Weight','Height','Wheel Base','Service Frequency']
+            'CC','Weight','Height','Wheel Base']
             for i in obint:
                 pms[i] = pd.to_numeric(pms[i], errors='coerce')
             pms = pms.drop('Service_Date',axis=1,errors = 'ignore')
@@ -737,8 +1161,15 @@ def process_service_data(mastersheet: str,servhistory: str, rfm: str, appointdf:
             logger.info(f'One-hot encoding complete. Shape: {pmsnew.shape}')
             
             
+            # NOTE: `& (pmsnew["TargetFlag"]==1)` removed 2026-08-13 -- it leaked the label into the
+            # feature (the flag could only ever be 1 for positives) and mismatched the
+            # prediction-side definition in predservicemil_4.py:2679, which has no label term and so
+            # means something entirely different at inference -- causing systematic over-prediction.
+            # Verified before the fix on the 60k matrix: 208 rows had the flag set, ALL 208 were
+            # TargetFlag==1, zero exceptions. This restores the definition already corrected in
+            # legacy/pmstrainfeatureEng.py:2621-2625, where the same bug was found and documented.
             pmsnew["LowMileageFreqUsers"] = np.where(
-             (pmsnew["Avg_Service_Interval_PMS"].between(0, 7)) & (pmsnew["Last Service Mileage"].between(0, (last_service_code-10)*1000)) & (pmsnew["TargetFlag"]==1),1,0)
+             (pmsnew["Avg_Service_Interval_PMS"].between(0, 7)) & (pmsnew["Last Service Mileage"].between(0, (last_service_code-10)*1000)),1,0)
             uy = ['Total Promoter','Total Passive','Total Detractor','Total Survey']
             for i in uy:
                 pmsnew[i] = pmsnew[i].fillna(0)
@@ -923,31 +1354,223 @@ def feature_sel(df: pd.DataFrame, cumulative_threshold: float = 0.85):
     return list(mi_df_selected["Feature"].values), mi_df
 
 
+def run_history_mode(args, milestone, label_suffix, eda_path, service_history_path,
+                     rfm_path, appointdf_path, digidf_path, vhc_path, servcode_path):
+    """Build the 'history' training matrix: one labelled cohort per quarter, features cut at that
+    quarter's start, then concatenated.
+
+    The per-quarter loop is the whole point. Under the 'ever' label mode every row shares one global
+    cutoff, which is fine only because the cohort is roughly contemporaneous. Labelling from service
+    history pulls in vehicles whose milestone fell anywhere in 2016-2025, and 88.2% of them complete
+    at least one further service before a 2025-12-31 cutoff (median 5). A single cutoff would hand
+    the model a snapshot taken five services after the event it is meant to predict.
+
+    Cost is one process_service_data() call per quarter, ~55s per 4,000 rows.
+    """
+    import time
+
+    n_q = args.quarters
+    end_year, end_q = args.year, int(args.quarter.upper().lstrip("Q"))
+    # walk back n_q quarters from the one BEFORE the prediction quarter -- the prediction quarter
+    # itself belongs to the test set, never to training
+    quarters, y, q = [], end_year, end_q
+    for _ in range(n_q):
+        q -= 1
+        if q == 0:
+            q, y = 4, y - 1
+        quarters.append((y, q))
+    quarters.reverse()
+
+    print(f"\n--- history mode: {n_q} quarterly cohorts, "
+          f"{quarters[0][0]}Q{quarters[0][1]} .. {quarters[-1][0]}Q{quarters[-1][1]}, "
+          f"grace +/-{args.grace_days}d ---")
+
+    df = pd.read_csv(eda_path, low_memory=False, encoding="ISO-8859-1")
+    df = df.query("`Last Service - PMS` != '-'").copy()
+    df["Last Service Mileage"] = pd.to_numeric(df["Last Service Mileage"], errors="coerce")
+    df["Last PMS Mileage"] = pd.to_numeric(df["Last PMS Mileage"], errors="coerce")
+    for col in ["Invoice date", "First Service Date", "Last Service Date - PMS",
+                "Last Service Date", "Next Service Date"]:
+        df[col] = pd.to_datetime(df[col].replace("-", pd.NA), format="mixed",
+                                 dayfirst=True, errors="coerce")
+    df["Service_Num"] = df["Last Service - PMS"].apply(extract_k1)
+    df["FirstSrvDate"] = df["Invoice date"].fillna(df["First Service Date"])
+    df = df.dropna(subset=["FirstSrvDate"]).drop_duplicates(subset="VIN")
+
+    serv = pd.read_csv(service_history_path, low_memory=False, encoding="ISO-8859-1")
+    serv["Service_Num"] = serv["Description"].apply(extract_kk)
+    serv["Service_Date"] = pd.to_datetime(serv["Service_Date"], format="mixed",
+                                          dayfirst=True, errors="coerce")
+    serv = serv.dropna(subset=["Service_Date"])
+
+    print(f"EDA rows {len(df):,} | service history rows {len(serv):,}\n")
+    print("cohorts:")
+    parts, t_start = [], time.time()
+    for y, q in quarters:
+        q_start, q_end = quarter_bounds(y, q)
+        cohort = build_history_cohort(df, serv, milestone, q_start, q_end,
+                                      grace_days=args.grace_days, date_model=args.date_model)
+        if len(cohort) < 50:
+            print(f"    skipped -- only {len(cohort)} rows")
+            continue
+        # Cut features at the moment the OUTCOME WINDOW OPENS, not at the quarter start. The band
+        # runs [q_start - grace, q_end + grace], so a cutoff of q_start would leave its first
+        # `grace` days inside the feature window -- the model could see ordinary visits made during
+        # the period it is being asked to predict. The milestone's own visit could never leak
+        # (serv1 is restricted to Service_Num < milestone at :514), but neighbouring visits could.
+        cutoff = q_start - pd.Timedelta(days=args.grace_days)
+        feats = process_service_data(
+            mastersheet=cohort, servhistory=service_history_path, rfm=rfm_path,
+            servcode=servcode_path, appointdf=appointdf_path, digidf=digidf_path, vhc=vhc_path,
+            filter_date=cutoff.strftime("%Y-%m-%d"),
+            last_service_code=milestone,
+            is_test=True,   # the master-sheet date filter would delete the whole cohort: every row
+                            # is due AFTER q_start by construction
+        )
+        feats["CohortQuarter"] = f"{y}Q{q}"
+        parts.append(feats)
+        print(f"    -> {feats.shape[0]:,} rows x {feats.shape[1]} cols "
+              f"({time.time()-t_start:.0f}s elapsed)")
+
+    if not parts:
+        sys.exit("history mode produced no cohorts -- check the year/quarter arguments")
+
+    # Cohorts emit different one-hot/per-category columns -- a quarter with no Renault-Alain visit
+    # produces no dummy for it. A plain concat leaves those NaN for that quarter, which is not the
+    # same as 0 to the imputer downstream. Reindex every part to the union and fill 0 EXPLICITLY:
+    # the category genuinely did not occur, and for the per-category COUNT columns
+    # (InvoicedPart__*, DeferredPart__*, LostPart__*) a count of 0 is equally correct. Only absent
+    # columns are touched; NaN inside a column a cohort did produce is left for the imputer.
+    union = list(dict.fromkeys(c for p in parts for c in p.columns))
+    filled = {}
+    for i, p in enumerate(parts):
+        missing = [c for c in union if c not in p.columns]
+        for c in missing:
+            filled[c] = filled.get(c, 0) + len(p)
+        parts[i] = p.reindex(columns=union, fill_value=0)
+    if filled:
+        print(f"\n{len(filled)} per-category columns absent from at least one cohort, "
+              f"zero-filled there ({sum(filled.values()):,} cells):")
+        for c, n in sorted(filled.items(), key=lambda kv: -kv[1])[:10]:
+            print(f"    {c:<45} {n:>6,} rows")
+
+    out = pd.concat(parts, axis=0, ignore_index=True, sort=False)
+    # A VIN can be due in only one quarter, so duplicates mean an upstream merge fanned out.
+    dupes = out["VIN"].duplicated().sum()
+    if dupes:
+        print(f"WARNING: {dupes} duplicate VINs across cohorts -- keeping the earliest")
+        out = out.drop_duplicates(subset="VIN", keep="first")
+
+    path = f"refactored_test_dir/final_processed_{milestone}k{label_suffix}.csv"
+    out.to_csv(path, index=False)
+    print(f"\nwrote {path}")
+    print(f"  {len(out):,} rows x {out.shape[1]} cols | "
+          f"positives {int(out['TargetFlag'].sum()):,} ({100*out['TargetFlag'].mean():.1f}%) | "
+          f"{time.time()-t_start:.0f}s total")
+    print(f"  rows per cohort:\n{out['CohortQuarter'].value_counts().sort_index().to_string()}")
+
+
 if __name__ == "__main__":
     import argparse
-    import json
     import os
     import sys
-    
+
     parser = argparse.ArgumentParser(description="Run PMS Training Feature Engineering")
     parser.add_argument("year", type=int, help="Prediction Year (e.g., 2026)")
     parser.add_argument("quarter", type=str, help="Prediction Quarter (e.g., Q1, Q2, Q3, Q4)")
     parser.add_argument("milestone", type=str, help="Service milestone (e.g., 20, 20k, 30)")
     parser.add_argument("--train-cutoff", type=str, help="Optional: YYYY-MM-DD date to filter service history (e.g., 2025-12-31). Defaults to the end of the previous quarter.", default=None)
+    parser.add_argument("--drop-mileage-cap", action="store_true",
+                        help="Keep negatives whose Last Service Mileage is already past the "
+                             "milestone. The cap removes 1,571 of 8,455 candidate negatives on 20k "
+                             "-- arguably the most overdue customers in the file.")
+    parser.add_argument("--label-mode", choices=["ever", "window", "all", "history", "candidates"],
+                        default="ever",
+                        help="'ever' (default): a positive is any vehicle that completed the "
+                             "milestone at any time. 'window': positives and negatives must both "
+                             "be DUE in the same window, which is what the test cohorts already "
+                             "do. See prepare_pms_datasets(). 'history': labels come from raw "
+                             "service history instead of EDA's `Last Service - PMS`, one cohort "
+                             "per quarter with the feature cutoff set to that quarter's start. "
+                             "See build_history_cohort() and run_history_mode(). 'candidates': like "
+                             "'history', but the due date is whichever comes first of the schedule "
+                             "or a service-1->service-10 burn-rate projection, requires a genuine "
+                             "EDA Invoice date, spans --quarters-from/--quarters-to (years, not a "
+                             "walk-back count), and counts early completers as positives (flagged "
+                             "via EarlyCompleter) instead of dropping them. See "
+                             "build_candidates_cohort() and run_candidates_mode().")
+    parser.add_argument("--quarters", type=int, default=8,
+                        help="history mode only: how many quarterly cohorts to build, walking back "
+                             "from the quarter BEFORE the prediction quarter. Default 8 (two "
+                             "years). More quarters buys rows and older, less representative "
+                             "customers.")
+    parser.add_argument("--quarters-from", type=str, default=None,
+                        help="candidates mode only: first due-quarter to include, e.g. 2016Q1. "
+                             "Default 2016Q1.")
+    parser.add_argument("--quarters-to", type=str, default=None,
+                        help="candidates mode only: last due-quarter to include, e.g. 2025Q4. "
+                             "Default 2025Q4.")
+    parser.add_argument("--grace-days", type=int, default=45,
+                        help="history/candidates mode: how far past the due quarter a completion "
+                             "still counts as turning up (candidates mode: forward only -- an early "
+                             "completion is a positive regardless of how early, see 'candidates' "
+                             "above). Default 45 for history mode; the labelling plan calls for 15 "
+                             "with --label-mode candidates. Tight on purpose in history mode -- it "
+                             "asks 'did they turn up roughly when due', not 'did they ever'. "
+                             "Widening it raises the positive rate steeply (20k over the eligible "
+                             "population: 11.2%% at +/-45d, 22.4%% at +/-90d, 41.8%% at +/-180d) "
+                             "but drifts back toward the 'ever' question.")
+    parser.add_argument("--label-start", type=str, default=None,
+                        help="window mode only: YYYY-MM-DD start of the shared due-date window. "
+                             "Defaults to Jan 1 of the previous year. Widening it buys rows but "
+                             "costs GRACE-PERIOD consistency: the label is still 'ever completed' "
+                             "against data ending 2026-12, so a vehicle due in 2018 had 8 years to "
+                             "turn up while one due in 2025 had 1 -- and the test cohorts (due "
+                             "Q1/Q2 2026) get ~1. Measured: a 2018 start cost 40k 0.13 AUC.")
+    parser.add_argument("--date-model", choices=["schedule", "calibrated"], default="schedule",
+                        help="How Expected{svc}Date is computed. 'schedule' (default): 6 months "
+                             "per 10k, the original rule. 'calibrated': measured medians from "
+                             "service history (features.MILESTONE_MONTHS_CALIBRATED) -- the "
+                             "schedule runs up to a year late (36 vs 22.1 months at 60k). MUST "
+                             "match prepare_test_set.py --date-model or train and test disagree "
+                             "on who is due when.")
+    parser.add_argument("--label-tag", type=str, default="",
+                        help="extra suffix on the output matrix, e.g. --label-tag narrow -> "
+                             "final_processed_20k_window_narrow.csv. Lets two window builds with "
+                             "different --label-start coexist instead of overwriting each other.")
     args = parser.parse_args()
-    
+
     milestone_val = int(args.milestone.lower().replace('k', ''))
-    
-    print(f"--- Running Training Data Preparation for {milestone_val}k ---")
+    # 'window' writes to its own matrix so an A/B never destroys the 'ever' one. retrain.py picks
+    # the matching file up via $env:PMS_LABEL_MODE.
+    # The suffix has to carry the date model too: 'calibrated' moves Expected{svc}Date for BOTH
+    # label modes (it defines the negatives' window under 'ever' as well), so a calibrated build
+    # must not overwrite a schedule one.
+    label_suffix = "" if args.label_mode == "ever" else f"_{args.label_mode}"
+    if args.date_model != "schedule":
+        label_suffix += "_cal"
+    if args.drop_mileage_cap:
+        label_suffix += "_nomil"
+    # a different grace band selects a different positive set, so it must not overwrite the default
+    if args.label_mode == "history" and args.grace_days != 45:
+        label_suffix += f"_g{args.grace_days}"
+    if args.label_tag:
+        label_suffix += f"_{args.label_tag}"
+
+    print(f"--- Running Training Data Preparation for {milestone_val}k "
+          f"(label mode: {args.label_mode}) ---")
     
     # Files
-    eda_path = os.path.join("data", "EDA - Q3 2025.csv")
-    service_history_path = os.path.join("data", "Service History Q1 - 2026.csv")
+    # The Q2-2026 snapshot is the live data set. Keep this block identical to the one in
+    # prepare_test_set.py -- if training and test read different vintages they describe different
+    # businesses, and nothing in the pipeline will tell you.
+    eda_path = os.path.join("data", "EDA_Q2-2026.csv")
+    service_history_path = os.path.join("data", "Service_History_Q2-2026.csv")
     rfm_path = "data/RFM_Q2-2026.csv"
     appointdf_path = "data/Appointments_Q2-2026.csv"
     digidf_path = "data/Digital_Sessions_Q2-2026.csv"
     vhc_path = "data/VHC_Q2-2026.csv"
-    servcode_path = "data/Service Code Desc.csv"
+    servcode_path = "data/Service_Code_Desc.csv"
     
     if not os.path.exists(eda_path):
         print(f"Error: Could not find {eda_path}")
@@ -956,6 +1579,24 @@ if __name__ == "__main__":
         print(f"Error: Could not find {service_history_path}")
         sys.exit(1)
     
+    # 'history' takes a completely different route: it builds one labelled cohort PER QUARTER and
+    # runs the feature pipeline once per cohort with that quarter's start as the cutoff, so a
+    # multi-year training set never lets a feature see past its own row's due date. Everything below
+    # this block (prepare_pms_datasets -> one process_service_data call) assumes a single global
+    # cutoff, which is only safe when every row is due at roughly the same time.
+    if args.label_mode == "history":
+        run_history_mode(args, milestone_val, label_suffix, eda_path, service_history_path,
+                         rfm_path, appointdf_path, digidf_path, vhc_path, servcode_path)
+        sys.exit(0)
+
+    # 'candidates': see run_candidates_mode()'s docstring. Labels the whole
+    # --quarters-from/--quarters-to span in one vectorised pass (build_candidates_cohort()), then
+    # reuses the same per-quarter process_service_data() discipline as 'history' mode.
+    if args.label_mode == "candidates":
+        run_candidates_mode(args, milestone_val, label_suffix, eda_path, service_history_path,
+                            rfm_path, appointdf_path, digidf_path, vhc_path, servcode_path)
+        sys.exit(0)
+
     # 1. Prepare PMS Datasets (old-style target labelling)
     final_df = prepare_pms_datasets(
         df_path=eda_path,
@@ -965,6 +1606,10 @@ if __name__ == "__main__":
         year=args.year,
         target_range=(0.35, 0.45),
         output_prefix="TestRefactored",
+        label_mode=args.label_mode,
+        label_start=args.label_start,
+        date_model=args.date_model,
+        drop_mileage_cap=args.drop_mileage_cap,
     )
     
     # Deduplicate: keep highest service milestone per VIN (matches legacy main logic)
@@ -1000,38 +1645,41 @@ if __name__ == "__main__":
     )
     
     # Save the huge raw processed file for debugging/checks
-    raw_processed_path = rf"refactored_test_dir\final_processed_{milestone_val}k.csv"
+    raw_processed_path = rf"refactored_test_dir\final_processed_{milestone_val}k{label_suffix}.csv"
     final_df_after_process.to_csv(raw_processed_path, index=False)
     
-    # 3. Feature Selection
-    print("\n--- Running Feature Selection ---")
+    # 3. Feature Selection -- kept for inspection only.
+    #
+    # RETIRED 2026-08-12: this block used to write a second, competing feature list to
+    # models/{m}k/selected_features.json (~33 cols) alongside a narrowed training_features.csv.
+    # Neither is consumed by anything: retrain.py reads the FULL matrix written above
+    # (refactored_test_dir/final_processed_{m}k.csv) and derives the real feature list itself, then
+    # saves it to models/selected_features_{m}k.json -- one file per model, at the models/ root.
+    # Having two files with the same name and incompatible contents was a live trap: filtering a
+    # test set by the MI shortlist left 67-78% of the model's inputs zero-filled and still ran clean.
+    print("\n--- Running Feature Selection (MI scores, for inspection only) ---")
     selected_features, mi_scores_df = feature_sel(final_df_after_process, cumulative_threshold=0.85)
-    
-    # We always keep 'TargetFlag' and 'VIN' for training
-    final_cols = ["VIN", "TargetFlag"] + selected_features
-    train_master = final_df_after_process[final_cols]
-    
-    print(f"Selected {len(selected_features)} features (from {final_df_after_process.shape[1]} total columns)")
-    print(f"Final training shape: {train_master.shape}")
-    
-    # Setup directories
-    model_dir = f"models/{milestone_val}k"
-    training_dir = f"{model_dir}/training"
-    os.makedirs(model_dir, exist_ok=True)
-    os.makedirs(training_dir, exist_ok=True)
-    
-    # Save Final Training Dataset
-    train_path = f"{training_dir}/training_features.csv"
-    train_master.to_csv(train_path, index=False)
-    print(f"Saved training set to {train_path}")
-    
-    # Save MI scores for inspection
-    mi_scores_path = f"{training_dir}/mi_scores.csv"
+    print(f"MI shortlist: {len(selected_features)} of {final_df_after_process.shape[1]} columns "
+          f"(not used for training -- retrain.py selects its own)")
+
+    model_dir_path = f"models/{milestone_val}k"
+    os.makedirs(model_dir_path, exist_ok=True)
+
+    # MI scores stay -- they are diagnostics, not a feature list, so nothing can mistake them.
+    mi_scores_path = f"{model_dir_path}/mi_scores.csv"
     mi_scores_df.to_csv(mi_scores_path, index=False)
     print(f"Saved MI scores to {mi_scores_path}")
-    
-    # Save the selected features to a JSON file so the Test Set script can use them
-    feature_list_path = f"{model_dir}/selected_features.json"
-    with open(feature_list_path, 'w') as f:
-        json.dump(selected_features, f)
-    print(f"Saved selected feature list to {feature_list_path}")
+
+    # --- commented out: retired outputs, see note above ---
+    # final_cols = ["VIN", "TargetFlag"] + selected_features
+    # train_master = final_df_after_process[final_cols]
+    # training_dir = f"{model_dir_path}/training"
+    # os.makedirs(training_dir, exist_ok=True)
+    # train_path = f"{training_dir}/training_features.csv"
+    # train_master.to_csv(train_path, index=False)
+    # print(f"Saved training set to {train_path}")
+    #
+    # feature_list_path = f"{model_dir_path}/selected_features.json"
+    # with open(feature_list_path, 'w') as f:
+    #     json.dump(selected_features, f)
+    # print(f"Saved selected feature list to {feature_list_path}")
