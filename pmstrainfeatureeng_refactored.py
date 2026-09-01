@@ -2,8 +2,9 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
-from features import extract_k1, extract_kk
+from features import extract_k1, resolve_service_num
 from due_date import burn_rate_date, earliest_date
+from date_utils import parse_dates
 
 
 
@@ -162,8 +163,8 @@ def prepare_pms_datasets(
     
     # Load Service History
     serv = pd.read_csv(service_history_path, low_memory=False, encoding='ISO-8859-1')
-    serv["Service_Num"] = serv["Description"].apply(extract_kk)
-    serv['Service_Date'] = pd.to_datetime(serv['Service_Date'], format='mixed', dayfirst=True, errors='coerce')
+    serv["Service_Num"] = resolve_service_num(serv)
+    serv['Service_Date'] = parse_dates(serv['Service_Date'])
     
     start_date = pd.to_datetime("2018-01-01")
     
@@ -388,10 +389,10 @@ def build_candidates_cohort(df, serv, milestone, win_start, win_end, grace_days=
     due date = whichever comes first of the schedule projection (FirstSrvDate + N months) and the
     service-1 -> service-10 burn-rate projection (due_date.burn_rate_date). `df` must already be
     invoice-date-guarded -- FirstSrvDate == a genuine `Invoice date`, never the First Service Date
-    fallback -- and `serv` must carry Service_Num sourced from the raw Service_Code column (see the
-    caller, run_candidates_mode(), for why: it is a different, unvalidated code path from
-    process_service_data()'s own extract_kk(Description)-based Service_Num, computed separately
-    later for feature purposes and not to be confused with this one).
+    fallback -- and `serv` must carry Service_Num from features.resolve_service_num(), which is
+    now what every path uses: Service_Code as the source of truth, Description only as a fallback.
+    (This used to be two rival derivations -- raw Service_Code here, extract_kk(Description) in
+    process_service_data() -- and they disagreed on 1,983 rows.)
 
     TargetFlag = 1 if the milestone was completed on or before quarter_end + grace_days, with NO
     restriction on how early the completion happened -- an "early completer" (already done before
@@ -498,8 +499,7 @@ def run_candidates_mode(args, milestone, label_suffix, eda_path, service_history
     df["Last PMS Mileage"] = pd.to_numeric(df["Last PMS Mileage"], errors="coerce")
     for col in ["Invoice date", "First Service Date", "Last Service Date - PMS",
                 "Last Service Date", "Next Service Date"]:
-        df[col] = pd.to_datetime(df[col].replace("-", pd.NA), format="mixed",
-                                 dayfirst=True, errors="coerce")
+        df[col] = parse_dates(df[col])
     df["Service_Num"] = df["Last Service - PMS"].apply(extract_k1)
     df["FirstSrvDate"] = df["Invoice date"].fillna(df["First Service Date"])
     df = df.dropna(subset=["FirstSrvDate"]).drop_duplicates(subset="VIN")
@@ -515,14 +515,12 @@ def run_candidates_mode(args, milestone, label_suffix, eda_path, service_history
           f"({n_before_guard - len(df):,} dropped, no genuine sale date)")
 
     serv_raw = pd.read_csv(service_history_path, low_memory=False, encoding="ISO-8859-1")
-    serv_raw["Service_Date"] = pd.to_datetime(serv_raw["Service_Date"], format="mixed",
-                                              dayfirst=True, errors="coerce")
+    serv_raw["Service_Date"] = parse_dates(serv_raw["Service_Date"])
     serv_raw["Mileage"] = pd.to_numeric(serv_raw["Mileage"], errors="coerce")
     serv_raw = serv_raw.dropna(subset=["Service_Date"])
-    # Raw Service_Code, NOT extract_kk(Description) -- see build_candidates_cohort()'s docstring.
-    # This column is for Stage A candidate labelling only; process_service_data() below recomputes
-    # its OWN Service_Num from Description + the '<=10' fix for feature purposes, independently.
-    serv_raw["Service_Num"] = pd.to_numeric(serv_raw["Service_Code"], errors="coerce")
+    # Service_Code first, Description as fallback -- the same rule process_service_data() uses, so
+    # candidate labelling and feature derivation can no longer disagree about what service a row is.
+    serv_raw["Service_Num"] = resolve_service_num(serv_raw)
     print(f"EDA rows {len(df):,} | service history rows {len(serv_raw):,}\n")
 
     cohort = build_candidates_cohort(df, serv_raw, milestone, win_start, win_end,
@@ -622,7 +620,10 @@ def derive_milestone_intervals(serv1: pd.DataFrame, mastertrain: pd.DataFrame, l
     first_npms = first_npms.rename(columns={'Service_Date': 'Date_first_npms'})
     
     master_dates = mastertrain[['VIN', 'Invoice date', 'First Service Date']].copy()
-    master_dates['FirstSrvDate'] = pd.to_datetime(master_dates['Invoice date'].fillna(master_dates['First Service Date']), format='mixed', errors='coerce')
+    # mastertrain reaches here either as an in-memory frame (dates already datetime) or read back
+    # from a CSV (dates written out as ISO). parse_dates handles both, and would still be right if
+    # it ever sees the raw day-first EDA text -- hardcoding either convention here breaks one case.
+    master_dates['FirstSrvDate'] = parse_dates(master_dates['Invoice date'].fillna(master_dates['First Service Date']))
     
     temp_dates = pd.DataFrame({'Vin_No': mastertrain['VIN'].unique()})
     temp_dates = temp_dates.merge(first_npms, on='Vin_No', how='left')
@@ -692,8 +693,8 @@ def process_service_data(mastersheet: str,servhistory: str, rfm: str, appointdf:
             logger.debug(f"Master sheet initial shape: {mastertrain.shape}")
             
             logger.info("Converting dates in master sheet")
-            mastertrain['Last Service Date - PMS'] = pd.to_datetime(mastertrain['Last Service Date - PMS'],format='mixed',dayfirst=True,errors='coerce')
-            mastertrain[col_name] = pd.to_datetime(mastertrain[col_name],format='mixed',errors='coerce')
+            mastertrain['Last Service Date - PMS'] = parse_dates(mastertrain['Last Service Date - PMS'])
+            mastertrain[col_name] = parse_dates(mastertrain[col_name])
             
             if not is_test:
                 mastertrain = mastertrain.query(f"{col_name} <= @filterdate and `Last Service Date - PMS` <= @filterdate")
@@ -721,7 +722,7 @@ def process_service_data(mastersheet: str,servhistory: str, rfm: str, appointdf:
             logger.debug(f"Service history initial shape: {serv1.shape}")
             
             logger.info("Processing service history data")
-            serv1['Service_Date'] = pd.to_datetime(serv1['Service_Date'],format='mixed',dayfirst=True,errors='coerce')
+            serv1['Service_Date'] = parse_dates(serv1['Service_Date'])
             invalid_dates = serv1['Service_Date'].isna().sum()
             if invalid_dates > 0:
                 logger.warning(f"Found {invalid_dates} invalid dates in service history. Dropping them.")
@@ -735,8 +736,10 @@ def process_service_data(mastersheet: str,servhistory: str, rfm: str, appointdf:
             serv1['Revenue'] = pd.to_numeric(serv1['Revenue'],errors='coerce')
             
             logger.info("Processing service numbers")
-            serv1['Service_Num'] = serv1['Description'].apply(extract_kk)
-            serv1['Service_Num'] = np.where(serv1['Description'] == '<=10', 10, serv1['Service_Num'])
+            # Service_Code first, Description as fallback. The '<=10' np.where patch that used
+            # to sit here is folded into resolve_service_num(), which also fixes the Q1-2026-only
+            # '11_20' spelling that bare extract_kk reads as service 1120.
+            serv1['Service_Num'] = resolve_service_num(serv1)
             
             # --- New Feature: Milestone Completion Flags ---
             previous_milestones = [10 * i for i in range(1, (last_service_code // 10))]
@@ -1121,8 +1124,8 @@ def process_service_data(mastersheet: str,servhistory: str, rfm: str, appointdf:
             pms[['Months_Since_Last_NPMS','Avg_Mileage_Interval_NPMS']] = pms[['Months_Since_Last_NPMS','Avg_Mileage_Interval_NPMS']].fillna(0)
             colssrvd = pms.pop('Last Service Date - PMS')
             pms.insert(3, colssrvd.name, colssrvd)
-            pms['Last Service Date - PMS'] = pd.to_datetime(pms['Last Service Date - PMS'],format='mixed',dayfirst=True,errors='coerce')
-            pms[f'Next{last_service_code}K_Due'] = pd.to_datetime(pms[f'Next{last_service_code}K_Due'],format='mixed',errors='coerce')
+            pms['Last Service Date - PMS'] = parse_dates(pms['Last Service Date - PMS'])
+            pms[f'Next{last_service_code}K_Due'] = parse_dates(pms[f'Next{last_service_code}K_Due'])
             colsdue = pms.pop(f'Next{last_service_code}K_Due')
             pms.insert(4, colsdue.name, colsdue)
             # Drop high-cardinality columns before encoding (already saved for clustering)
@@ -1391,16 +1394,14 @@ def run_history_mode(args, milestone, label_suffix, eda_path, service_history_pa
     df["Last PMS Mileage"] = pd.to_numeric(df["Last PMS Mileage"], errors="coerce")
     for col in ["Invoice date", "First Service Date", "Last Service Date - PMS",
                 "Last Service Date", "Next Service Date"]:
-        df[col] = pd.to_datetime(df[col].replace("-", pd.NA), format="mixed",
-                                 dayfirst=True, errors="coerce")
+        df[col] = parse_dates(df[col])
     df["Service_Num"] = df["Last Service - PMS"].apply(extract_k1)
     df["FirstSrvDate"] = df["Invoice date"].fillna(df["First Service Date"])
     df = df.dropna(subset=["FirstSrvDate"]).drop_duplicates(subset="VIN")
 
     serv = pd.read_csv(service_history_path, low_memory=False, encoding="ISO-8859-1")
-    serv["Service_Num"] = serv["Description"].apply(extract_kk)
-    serv["Service_Date"] = pd.to_datetime(serv["Service_Date"], format="mixed",
-                                          dayfirst=True, errors="coerce")
+    serv["Service_Num"] = resolve_service_num(serv)
+    serv["Service_Date"] = parse_dates(serv["Service_Date"])
     serv = serv.dropna(subset=["Service_Date"])
 
     print(f"EDA rows {len(df):,} | service history rows {len(serv):,}\n")
