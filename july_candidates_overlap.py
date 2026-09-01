@@ -65,16 +65,25 @@ def load_actuals(path):
     return act
 
 
-def load_eda(path):
+def load_eda(path, relax_guard=False):
     df = pd.read_csv(path, low_memory=False, encoding="ISO-8859-1")
     df = df.query("`Last Service - PMS` != '-'").copy()
     df["Invoice date"] = parse_dates(df["Invoice date"])
     df["First Service Date"] = parse_dates(df["First Service Date"])
     df["FirstSrvDate"] = df["Invoice date"].fillna(df["First Service Date"])
     n_before = len(df)
-    df = df[df["Invoice date"].notna()].copy()
-    print(f"EDA: {n_before:,} -> {len(df):,} vehicles after the invoice-date guard "
-          f"({n_before - len(df):,} dropped, no genuine sale date)")
+    if relax_guard:
+        # A/B arm: anchor on First Service Date when the sale date is missing, instead of
+        # dropping the vehicle. Caveat: the schedule due date then measures from the first
+        # VISIT, not the sale, so it lands late for these vehicles by the sale->first-service
+        # lag. Reachability up, timing precision of the added vehicles unknown -- measure both.
+        df = df[df["FirstSrvDate"].notna()].copy()
+        print(f"EDA: {n_before:,} -> {len(df):,} vehicles, RELAXED guard "
+              f"({(df['Invoice date'].isna()).sum():,} anchored on First Service Date)")
+    else:
+        df = df[df["Invoice date"].notna()].copy()
+        print(f"EDA: {n_before:,} -> {len(df):,} vehicles after the invoice-date guard "
+              f"({n_before - len(df):,} dropped, no genuine sale date)")
     return df
 
 
@@ -113,13 +122,16 @@ def main():
     ap.add_argument("--history", default=os.path.join("data", "Service_History_Q2-2026.csv"))
     ap.add_argument("--milestones", default=",".join(str(m) for m in MILESTONES))
     ap.add_argument("--out-dir", default="candidates_jul2026")
+    ap.add_argument("--relax-invoice-guard", action="store_true",
+                    help="A/B arm: keep vehicles without a sale date, anchoring their schedule "
+                         "due date on First Service Date instead of dropping them")
     args = ap.parse_args()
 
     milestones = [int(m) for m in args.milestones.split(",") if m.strip()]
     start, end = args.window_start, args.window_end
     print(f"--- Candidate vs actual overlap, {start} .. {end} (projection cutoff {args.cutoff}) ---")
 
-    eda = load_eda(args.eda)
+    eda = load_eda(args.eda, relax_guard=args.relax_invoice_guard)
     serv_cut = load_base_history(args.history, args.cutoff)
     actuals = load_actuals(args.actuals)
 

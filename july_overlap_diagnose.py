@@ -37,6 +37,8 @@ def main():
     ap.add_argument("--eda", default=os.path.join("data", "EDA_Q2-2026.csv"))
     ap.add_argument("--history", default=os.path.join("data", "Service_History_Q2-2026.csv"))
     ap.add_argument("--out-dir", default="candidates_jul2026")
+    ap.add_argument("--relax-invoice-guard", action="store_true",
+                    help="A/B arm: keep vehicles without a sale date, anchored on First Service Date")
     args = ap.parse_args()
 
     raw = pd.read_csv(args.eda, low_memory=False, encoding="ISO-8859-1")
@@ -47,7 +49,10 @@ def main():
     step1["Invoice date"] = parse_dates(step1["Invoice date"])
     step1["First Service Date"] = parse_dates(step1["First Service Date"])
     step1["FirstSrvDate"] = step1["Invoice date"].fillna(step1["First Service Date"])
-    eda = step1[step1["Invoice date"].notna()].copy()
+    if args.relax_invoice_guard:
+        eda = step1[step1["FirstSrvDate"].notna()].copy()
+    else:
+        eda = step1[step1["Invoice date"].notna()].copy()
     guarded_vins = set(eda["VIN"])
     # EDA carries duplicate VIN rows; the cohort builder never dedupes (set() hides it downstream),
     # but a per-VIN due-date lookup needs a unique index.
