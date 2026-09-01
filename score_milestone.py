@@ -35,6 +35,10 @@ def main():
     p.add_argument("--out", default=None, help="Default: predictions/{m}k/scored_<testname>.csv")
     p.add_argument("--threshold", type=float, default=None,
                    help="Default: model-dir threshold.json, else 0.5")
+    p.add_argument("--features", default=None,
+                   help="Feature-list JSON. Required for a PMS_RUN_TAG model dir: the default is "
+                        "the untagged models/selected_features_{m}k.json, which is the wrong list "
+                        "for a tagged run (silent wrong-column-order load when the counts match)")
     args = p.parse_args()
 
     m = args.milestone
@@ -43,8 +47,9 @@ def main():
         if not os.path.exists(os.path.join(mdir, f)):
             sys.exit(f"Missing {os.path.join(mdir, f)} -- run: python retrain.py {m}")
     # The feature list is one file per model at the models/ root, not inside the model dir.
-    if not os.path.exists(features_path(m)):
-        sys.exit(f"Missing {features_path(m)} -- run: python retrain.py {m}")
+    feat_path = args.features or features_path(m)
+    if not os.path.exists(feat_path):
+        sys.exit(f"Missing {feat_path} -- run: python retrain.py {m}")
     if not os.path.exists(args.test):
         sys.exit(f"Missing test file {args.test}")
 
@@ -53,7 +58,8 @@ def main():
         tp = os.path.join(mdir, 'threshold.json')
         threshold = json.load(open(tp))['threshold'] if os.path.exists(tp) else 0.5
 
-    model, imputer, scaler, selected_features = load_artifacts(m, DEVICE, mdir=mdir)
+    model, imputer, scaler, selected_features = load_artifacts(
+        m, DEVICE, mdir=mdir, features_file=args.features)
 
     df = pd.read_csv(args.test, low_memory=False)
     vin = df['VIN'] if 'VIN' in df.columns else pd.Series(df.index, name='VIN')
@@ -99,13 +105,30 @@ def main():
               "Expected for a window with no outcomes yet.")
         return
 
-    print(f"\nAccuracy  {100 * accuracy_score(y, pred):.2f}")
-    print(f"Precision {100 * precision_score(y, pred, zero_division=0):.2f}")
-    print(f"Recall    {100 * recall_score(y, pred, zero_division=0):.2f}")
-    print(f"F1        {100 * f1_score(y, pred, zero_division=0):.2f}")
-    print(f"AUC       {roc_auc_score(y, probs):.4f}")
-    print(f"Brier     {brier_score_loss(y, probs):.4f}")
-    print(f"Confusion (rows=actual 0/1, cols=pred 0/1):\n{confusion_matrix(y, pred)}")
+    def report(yv, pv, predv):
+        print(f"Accuracy  {100 * accuracy_score(yv, predv):.2f}")
+        print(f"Precision {100 * precision_score(yv, predv, zero_division=0):.2f}")
+        print(f"Recall    {100 * recall_score(yv, predv, zero_division=0):.2f}")
+        print(f"F1        {100 * f1_score(yv, predv, zero_division=0):.2f}")
+        print(f"AUC       {roc_auc_score(yv, pv):.4f}")
+        print(f"Brier     {brier_score_loss(yv, pv):.4f}")
+        print(f"Confusion (rows=actual 0/1, cols=pred 0/1):\n{confusion_matrix(yv, predv)}")
+
+    print()
+    report(y, probs, pred)
+
+    # Early completers finished the milestone before the window opened, so their outcome is
+    # settled at scoring time and they are 100% positive by construction -- the combined number
+    # overstates the model. The not-early slice is the honest one; always read both.
+    if 'EarlyCompleter' in df.columns:
+        ne = (df['EarlyCompleter'].fillna(0).astype(int).values == 0)
+        y_ne, p_ne, pred_ne = y[ne], probs[ne], pred[ne]
+        print(f"\nNot-early slice (EarlyCompleter==0): {ne.sum()}/{len(y)} rows, "
+              f"{100 * y_ne.mean():.1f}% positive")
+        if len(set(y_ne)) < 2:
+            print("TargetFlag is constant on the slice -- metrics undefined.")
+        else:
+            report(y_ne, p_ne, pred_ne)
 
 
 if __name__ == "__main__":

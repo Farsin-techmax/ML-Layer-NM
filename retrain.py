@@ -14,6 +14,8 @@ import joblib
 import json
 import logging
 
+from date_utils import parse_dates
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -126,6 +128,11 @@ TEST_Q2 = resolve_path(f"test_sets/test_{MILESTONE}k_Q2_2026{TEST_SUFFIX}.csv")
 # out, since CohortQuarter is already on every row -- no feature rebuild needed, just a filter
 # before the chronological split below. Default '' keeps all years (the full 2016-2025 span).
 TRAIN_FROM = os.environ.get('PMS_TRAIN_FROM', '')
+# $env:PMS_TRAIN_TO=2024: mirror of PMS_TRAIN_FROM, keeps cohorts whose year is <= this value.
+# Exists for window selection: train the full/2021+/2023+ arms only through 2024 so all three can
+# be compared on an identical held-back 2025 cohort slice, instead of on the two 2026 test quarters
+# (which must never drive a tuning decision -- there are only two of them).
+TRAIN_TO = os.environ.get('PMS_TRAIN_TO', '')
 
 # models/{m}k/ for the weights/scaler/imputer, models/selected_features_{m}k.json for the feature
 # list -- one file per model, at the models/ root. Was models/models_alan/{m}k/ until 2026-08-12.
@@ -145,21 +152,30 @@ logger.info(f"Loading training data: {TRAIN}")
 train_df = pd.read_csv(TRAIN, low_memory=False)
 logger.info(f"Train shape: {train_df.shape}, Target: {train_df['TargetFlag'].value_counts().to_dict()}")
 
-if TRAIN_FROM:
+if TRAIN_FROM or TRAIN_TO:
     if 'CohortQuarter' not in train_df.columns:
-        sys.exit(f"PMS_TRAIN_FROM={TRAIN_FROM!r} needs a CohortQuarter column -- only "
-                 f"--label-mode history/candidates matrices have one")
+        sys.exit(f"PMS_TRAIN_FROM={TRAIN_FROM!r}/PMS_TRAIN_TO={TRAIN_TO!r} need a CohortQuarter "
+                 f"column -- only --label-mode history/candidates matrices have one")
     _yr = train_df['CohortQuarter'].astype(str).str[:4].astype(int)
     _before = len(train_df)
-    train_df = train_df[_yr >= int(TRAIN_FROM)].reset_index(drop=True)
-    logger.info(f"PMS_TRAIN_FROM={TRAIN_FROM}: {_before} -> {len(train_df)} rows "
-                f"(dropped cohorts before {TRAIN_FROM})")
+    if TRAIN_FROM:
+        train_df = train_df[_yr >= int(TRAIN_FROM)]
+        _yr = _yr[_yr >= int(TRAIN_FROM)]
+    if TRAIN_TO:
+        train_df = train_df[_yr <= int(TRAIN_TO)]
+    train_df = train_df.reset_index(drop=True)
+    logger.info(f"PMS_TRAIN_FROM={TRAIN_FROM or '-'} PMS_TRAIN_TO={TRAIN_TO or '-'}: "
+                f"{_before} -> {len(train_df)} rows")
 
 # Temporal cutoff: train only on data up to Q4 2025 (test sets are Q1/Q2 2026), then sort by due
 # date so the 80/20 split below really is chronological -- it holds out the most recent vehicles
 # rather than whatever happened to sit last in the file. Rows with an unparseable due date fail the
 # comparison and are dropped, as before.
-_due = pd.to_datetime(train_df[f'Next{MILESTONE}K_Due'], errors='coerce', dayfirst=True, format='mixed')
+# parse_dates, not a bare dayfirst=True parse: the matrix stores this column as ISO with a time
+# component, and on pandas 3.0.3 dayfirst=True corrupts exactly those values (2026-08-09 00:00:00
+# -> 2026-09-08). Measured on the 20k candidates matrix 2026-09-01: 50.6% of values parsed to a
+# different date, scrambling the chronological sort (0 rows flipped across the cutoff).
+_due = parse_dates(train_df[f'Next{MILESTONE}K_Due'])
 _keep = _due <= pd.Timestamp('2025-12-31')
 train_df = train_df[_keep].copy()
 train_df['_due_sort'] = _due[_keep]
@@ -248,6 +264,13 @@ for _c in _train_only:
 
 _n_before = X.shape[1]
 X = X[[c for c in X.columns if c in _common or c in _recovered]]
+# The prefix check above only sees TRAIN-ONLY columns, so a leaky-family column present in both
+# train and test sailed through it (this is how 'PMS Status_PMS only' reached the promoted 20k
+# model). Apply the same rule to the final set, wherever the column came from.
+_leaky = [c for c in X.columns if c.startswith(LEAKY_FAMILY_PREFIXES)]
+if _leaky:
+    X = X.drop(columns=_leaky)
+    logger.info(f"Dropped {len(_leaky)} leaky-family columns present in train AND test: {_leaky}")
 logger.info(f"Test-schema reconcile: kept {X.shape[1]} / {_n_before} features")
 if _recovered:
     _fams = sorted({_c.split('__')[0] if '__' in _c else _c.rsplit('_', 1)[0]
