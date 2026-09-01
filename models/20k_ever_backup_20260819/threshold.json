@@ -1,0 +1,7 @@
+{
+    "tuned_on":  "validation slice (last 20% by Next20K_Due)",
+    "tuned_utc":  "2026-08-12",
+    "threshold":  0.5,
+    "metric":  "F1",
+    "note":  "val F1-max was 0.48; 0.5 scores equal-or-better on Q1 test and matches retrain.py / eval_test_metrics.py"
+}

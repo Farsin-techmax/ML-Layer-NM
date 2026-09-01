@@ -1,0 +1,29 @@
+{
+  "artifact": "candidates_jul2026/overlap_summary.csv",
+  "artifact_record": {
+    "sha256": "2831a5d70292c9dac9f7662597733fccb111d7bec9a45aa49342a5cc1f400105",
+    "size": 995,
+    "mtime": "2026-09-01 12:49:56"
+  },
+  "inputs": {
+    "data/EDA_Q2-2026.csv": {
+      "sha256": "7bbf739835cc62e0ada9f2cce393aade0ab09ec86ec52ab750ba273dac2c86da",
+      "size": 51991796,
+      "mtime": "2026-07-24 10:46:04"
+    },
+    "data/Service_History_Q2-2026.csv": {
+      "sha256": "8e304b89013a9a5e03a880c8fde446c3f799caa67f6b2e499f1c07e8bf20998a",
+      "size": 114359663,
+      "mtime": "2026-08-19 12:46:49"
+    },
+    "data/Service_History_Jul_2026.xlsx": {
+      "sha256": "c2060a64f94237e9514ee27889cf3efd9edca614860333ecd3bcfe63a63ef50f",
+      "size": 837092,
+      "mtime": "2026-08-31 12:18:43"
+    }
+  },
+  "command": "python july_candidates_overlap.py (defaults)",
+  "git_head": "3ce6384c787c4c291e7485f6dd424382336db035",
+  "env_pms": {},
+  "written_at": "2026-09-01 12:53:06"
+}

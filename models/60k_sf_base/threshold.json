@@ -1,0 +1,7 @@
+{
+  "threshold": 0.77,
+  "tuned_on": "validation slice (last 20% by Next60K_Due)",
+  "metric": "F1",
+  "val_f1": 0.8826,
+  "model_tag": "_sf_base"
+}

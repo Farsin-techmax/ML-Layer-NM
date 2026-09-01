@@ -1,0 +1,166 @@
+# 20k Neural Network Pipeline — Root Cause Analysis
+
+## Executive Summary
+
+Brier Score of **0.4** is essentially coin-flip territory (random = 0.25 for balanced data). I found **one show-stopper bug** in the training script, several **data leakage / distribution mismatch** issues, and a few **architecture/training concerns**.
+
+---
+
+## 🔴 CRITICAL BUG — `train_nn_20k.py` Line 136
+
+```python
+X_test_t = torch.FloatTensor(y_test.copy()).unsqueeze(1)  # ← WRONG
+```
+
+This creates the **test tensor from the LABELS, not the features**. `X_test_scaled` is computed correctly (line 124) but **never used to create a tensor**. Then at evaluation time (line 194):
+
+```python
+test_X_tensor = torch.FloatTensor(X_test_scaled).to(device)  # ← Uses the correct array
+```
+
+So evaluation itself is fine — the bug means `X_test_t` (the broken tensor) is **never actually used for anything** since there's no test DataLoader. The evaluation path directly uses `X_test_scaled`. So this line is dead code with a bug, **not the root cause** of the 0.4 Brier.
+
+> [!IMPORTANT]
+> The dead-code bug doesn't explain 0.4 Brier. The real issues are below.
+
+---
+
+## 🔴 Train/Test Distribution Mismatch (PRIMARY SUSPECT)
+
+### Problem 1: Training set is synthetically balanced, test set reflects real-world prevalence
+
+| Dataset | How cohort is built | Expected class ratio |
+|---------|-------------------|---------------------|
+| **Training** (`prepare_pms_datasets`) | Iteratively adjusts date window to force **35–45% positive** ratio | ~40% positive |
+| **Test** (`create_test_cohort`) | Takes ALL vehicles due in Q1 2026 window, labels by actual show-up | **Real-world ratio** (likely 10–25%) |
+
+A model trained on 40% positives will **dramatically overpredict** on a test set with 15% positives → inflated Brier score.
+
+### Problem 2: Imputation differences
+
+- **Training pipeline** ([pmstrainfeatureeng_refactored.py:700-712](file:///c:/Techmax/cwf/code/pmstrainfeatureeng_refactored.py#L700-L712)): Uses `IterativeImputer` with Lasso + StandardScaler **before** saving features to CSV. The saved CSV has already-imputed (transformed) values.
+- **Training script** ([train_nn_20k.py:116-124](file:///c:/Techmax/cwf/code/train_nn_20k.py#L116-L124)): Applies `SimpleImputer(median)` + `StandardScaler` **again** on the already-imputed training data.
+- **Test set** ([prepare_test_set.py:142-153](file:///c:/Techmax/cwf/code/prepare_test_set.py#L142-L153)): Runs through `process_service_data(..., is_test=True)` which also does the `IterativeImputer` pass.
+
+So training features get **double-imputed and double-scaled**: once by the feature engineering pipeline, then again by the NN training script. Test features get imputed once (Iterative), then again by the NN script. The two imputation strategies (`IterativeImputer+Lasso` vs `SimpleImputer+median`) produce different distributions.
+
+### Problem 3: Near-zero values from StandardScaler inverse transform
+
+Look at the training CSV values:
+```
+Avg_Service_Interval_PMS: -8.881784197001252e-16
+Min_PMS_Revenue: -5.684341886080802e-14
+```
+
+These are floating-point artifacts from the `StandardScaler → IterativeImputer → inverse_transform` pipeline. Conceptually these should be 0, but the imputer + scaler round-trip introduces machine-epsilon noise. When the NN training script applies `StandardScaler` again, these near-zero values get scaled differently from true zeros in the test set.
+
+---
+
+## 🟠 Feature Engineering Issues
+
+### Issue 1: `LowMileageFreqUsers` feature leaks the target
+
+[pmstrainfeatureeng_refactored.py:671](file:///c:/Techmax/cwf/code/pmstrainfeatureeng_refactored.py#L671):
+```python
+pmsnew["LowMileageFreqUsers"] = np.where(
+    (pmsnew["Avg_Service_Interval_PMS"].between(0, 7)) & 
+    (pmsnew["Last Service Mileage"].between(0, (last_service_code-10)*1000)) & 
+    (pmsnew["TargetFlag"]==1),  # ← DIRECTLY USES THE LABEL
+    1, 0)
+```
+
+This feature is **computed from `TargetFlag`** itself. During training it's perfectly correlated with a subset of positives. During test, it'll behave differently since `TargetFlag` is unknown at prediction time (or assigned differently by the test cohort logic).
+
+However, looking at `selected_features.json`, this feature wasn't selected by MI. **Not in the final model**, so no impact currently — but it's a latent bug.
+
+### Issue 2: `reference_date` defaults in time-based features
+
+[features.py:119-120](file:///c:/Techmax/cwf/code/features.py#L119-L120):
+```python
+if reference_date is None:
+    reference_date = pd.Timestamp.today()
+```
+
+Both `derive_pms_features1()` and `derive_npms_features()` default to **today's date** when no reference_date is passed. The `process_service_data()` function never passes a reference date to these functions.
+
+- Training data built on date X → `Months_Since_Last_PMS` = months from last PMS to date X.  
+- Test data built on date Y (later) → same feature = months from last PMS to date Y.  
+
+If training and test were run on different days, these features have a systematic offset. Even if run the same day, the feature semantically should use `filter_date` as the reference, not `pd.Timestamp.today()`.
+
+### Issue 3: `get_last_nonpms_mileage` filters by TargetFlag
+
+[pmstrainfeatureeng_refactored.py line 323-324](file:///c:/Techmax/cwf/code/pmstrainfeatureeng_refactored.py#L323-L324) calls `get_last_nonpms_mileage` which internally filters by `TargetFlag == 0`:
+
+```python
+lastpmsvins = mastertrain.query("TargetFlag == 0")['VIN'].unique()
+```
+
+And `get_last_nonpms_before_targetpms` filters by `TargetFlag == 1`. So mileage features are computed **differently** for positives and negatives. During training this is fine (both groups covered). During test, the same function is called but now `TargetFlag` is the **ground truth label** assigned by `create_test_cohort` — the feature becomes dependent on the label assignment strategy.
+
+---
+
+## 🟠 Test Set Production Issues
+
+### Issue 1: `prepare_test_set.py` line 140 uses EDA's `Last Service - PMS`
+
+```python
+cohort["Service_Num"] = cohort["Last Service - PMS"].apply(extract_k1)
+```
+
+The test set script carefully avoids using EDA's `Last Service - PMS` for cohort filtering (line 71 comment: "DO NOT use EDA's 'Last Service - PMS' because it leaks future data!"), but then **uses it anyway** on line 140 to set `Service_Num` before calling `process_service_data()`. The feature engineering pipeline uses `Service_Num` extensively to filter and merge features.
+
+### Issue 2: Data file vintage mismatch
+
+Test script uses:
+- `eda_path = "data/EDA - Q3 2025.csv"` (snapshot from Q3 2025)
+- `service_history_path = "data/Service History Q1 - 2026.csv"` (extends to Q1 2026)
+
+The EDA file is a Q3 2025 snapshot, meaning vehicle statuses, mileages, and service counts in the master sheet are **stale** relative to the Q1 2026 service history. The training pipeline uses the same files, so this is consistent — but the EDA columns like `Last Service Mileage`, `Vehicle Service Status` etc. may not reflect the vehicle's state at the `cutoff_date`.
+
+### Issue 3: `process_service_data` is_test flag bypass is incomplete
+
+When `is_test=True`, the function skips the `Expected_Date <= filterdate` filter ([line 244-248](file:///c:/Techmax/cwf/code/pmstrainfeatureeng_refactored.py#L244-L248)). But it **still** applies `Service_Date <= filterdate` on the service history (line 269). This means:
+- Feature history is correctly capped at the cutoff date ✓
+- But the master sheet isn't filtered by expected date, which could include vehicles whose expected dates are far in the future or past ✗
+
+---
+
+## 🟡 Training Loop Issues
+
+### Issue 1: No class weighting
+
+The model uses plain `BCEWithLogitsLoss()` without `pos_weight`. If the training set is 40% positive, this isn't terrible. But the model learns a prior that ~40% of vehicles show up — then gets tested on data where maybe 15% show up. The predicted probabilities will be systematically too high.
+
+### Issue 2: Architecture may be too deep for 32 features
+
+3-layer MLP (128→64→32) with BatchNorm and Dropout for only **32 input features** is over-parameterized. The model has ~13K parameters for 32 features. With BatchNorm + Dropout at every layer, it may be learning noise patterns specific to the training distribution.
+
+### Issue 3: No probability calibration
+
+Raw sigmoid outputs from a neural network are rarely well-calibrated. For a Brier score metric specifically, isotonic regression or Platt scaling post-training would be standard practice.
+
+---
+
+## Severity-Ranked Fix Priority
+
+| Priority | Issue | Impact on Brier | Fix |
+|----------|-------|----------------|-----|
+| **P0** | Train/test class imbalance mismatch | **Very High** | Either: (a) balance test set to match training, or (b) use `pos_weight` in training + calibrate |
+| **P0** | Double imputation + double scaling | **High** | Remove `SimpleImputer`+`StandardScaler` from `train_nn_20k.py` — data is already imputed. Or remove imputation from feature eng and only do it in training |
+| **P1** | `reference_date` not set to `filter_date` | **Medium** | Pass `filter_date` to `derive_pms_features1()` and `derive_npms_features()` |
+| **P1** | Test set uses EDA `Last Service - PMS` for `Service_Num` | **Medium** | Derive `Service_Num` from service history up to cutoff, not from EDA snapshot |
+| **P2** | No probability calibration | **Medium** | Add `CalibratedClassifierCV` or isotonic regression on val set |
+| **P2** | No `pos_weight` on loss | **Medium** | Set `pos_weight` proportional to class imbalance |
+| **P2** | Over-parameterized architecture | **Low-Medium** | Simplify to 2 layers (64→32) or try logistic regression baseline first |
+| **P3** | `LowMileageFreqUsers` label leakage | **None currently** | Feature not selected, but should be removed to prevent future issues |
+| **P3** | Dead code bug line 136 | **None** | Fix for correctness: `X_test_t = torch.FloatTensor(X_test_scaled)` |
+
+---
+
+## Recommended Next Steps
+
+1. **Validate class distribution**: Print `y_train.mean()` vs `y_test.mean()` — if they differ by >10%, that's the primary cause
+2. **Remove double preprocessing**: The training CSV is already imputed — skip `SimpleImputer` in the NN script, or save raw (un-imputed) features and let the NN script handle all preprocessing  
+3. **Add calibration**: After training, fit `sklearn.calibration.CalibratedClassifierCV` on the validation set  
+4. **Baseline comparison**: Train a simple `LogisticRegression` on the same features to establish whether the NN architecture is even helping

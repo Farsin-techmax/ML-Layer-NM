@@ -1,0 +1,113 @@
+# Temporal Validation: Train Q4-2025 / Test Q1-2026
+
+## Goal
+
+Train the model using data available up to **Dec 31, 2025**. Validate predictions against **Q1 2026** ground truth (vehicles that actually showed up Jan–Mar 2026).
+
+---
+
+## Data Reality
+
+All data files are **cumulative** (2016–2026). No separate quarterly snapshots needed — we filter by date internally.
+
+| File | Contains | How we split |
+|---|---|---|
+| `Service_History_Q2-2026.csv` | All service records 2016–2026 | `filter_date` parameter |
+| `EDA - Q3 2025.csv` | All vehicles since inception | `Expected{svc}Date` filtering |
+
+---
+
+## Proposed Changes
+
+### 1. Training Pipeline (modify existing `__main__` block)
+
+No function changes needed. Just adjust the call parameters:
+
+```python
+# Train: use data up to Q4 2025
+prepare_pms_datasets(quarter="Q1", year=2026)  # quarter_end = Dec 31, 2025
+process_service_data(filter_date="2025-12-31")  # Only use service records before 2026
+```
+
+The existing `prepare_pms_datasets(quarter="Q1", year=2026)` already returns `quarter_end = 2025-12-31`, which is exactly what we want. The `filter_date` in `process_service_data` already filters service history records — we just pass `2025-12-31` instead of `2026-06-30`.
+
+> [!IMPORTANT]
+> The `filter_date` inside `process_service_data` must match the training cutoff. Currently hardcoded to `2026-06-30` in the `__main__` block. This needs to be parameterized.
+
+---
+
+### 2. Test Set Preparation — [NEW] `prepare_test_set.py`
+
+A new script that builds the Q1 2026 test cohort:
+
+**Step 1 — Find the prediction cohort:**
+- From EDA, find vehicles whose `Expected20kDate` falls within **Q1 2026** (Jan 1 – Mar 31, 2026)
+- These are vehicles that haven't done their 20k yet as of Dec 31, 2025
+- **No balancing/sampling** — take ALL vehicles as they naturally occur
+
+**Step 2 — Label with ground truth:**
+- Check the cumulative service history for 20k service records between Jan 1 – Mar 31, 2026
+- If a vehicle completed 20k in Q1 2026 → `TargetFlag = 1`
+- If not → `TargetFlag = 0`
+
+**Step 3 — Generate features:**
+- Pass the cohort through `process_service_data(filter_date="2025-12-31")`
+- Features are computed using ONLY data available before the prediction window
+- This prevents data leakage
+
+**Step 4 — Apply `feature_sel` selected features:**
+- Use the **same feature list** from training (not re-run MI on test data)
+- Slice test set to match training columns exactly
+
+**Step 5 — Save:**
+- Save to `test_sets/test_20k_Q1_2026.csv`
+
+---
+
+### 3. Directory Structure
+
+```
+code/
+├── models/
+│   └── 20k/
+│       ├── training_features.csv      # Training set (up to Q4 2025)
+│       └── selected_features.json     # Feature list from MI selection
+├── test_sets/
+│   └── test_20k_Q1_2026.csv           # Test set with ground truth
+└── refactored_test_dir/               # Debug/validation outputs (existing)
+```
+
+---
+
+### 4. Evaluation Workflow (after model training)
+
+Once we have the trained model + test set:
+
+```
+Train on: models/20k/training_features.csv
+Predict on: test_sets/test_20k_Q1_2026.csv (features only)
+Compare against: test_sets/test_20k_Q1_2026.csv (TargetFlag column)
+```
+
+Metrics to compute: Accuracy, Precision, Recall, F1, AUC-ROC, Confusion Matrix.
+
+---
+
+## Open Questions
+
+> [!WARNING]
+> **Feature data files (RFM, Appointments, VHC, Digital Sessions):** These are also cumulative. Should `process_service_data` filter them by date too, or are they point-in-time snapshots that don't change? If they contain records from Q1 2026, using them in training would leak future info.
+
+> [!IMPORTANT]  
+> **`selected_features.json`:** The feature list from MI selection on the training set must be saved and reused for the test set. The test set should NOT run its own `feature_sel()` — it must use the exact same columns as training.
+
+---
+
+## Execution Order
+
+1. Modify `__main__` block → parameterize `filter_date` and quarter
+2. Run training pipeline for Q1/2026 (cutoff: Dec 31, 2025) → save training set + feature list
+3. Create `prepare_test_set.py` → build Q1 2026 test cohort
+4. Run test set through `process_service_data(filter_date="2025-12-31")` → save test set
+5. Verify both CSVs have identical column schemas
+6. Ready for model training + evaluation

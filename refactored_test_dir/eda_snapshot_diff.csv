@@ -1,0 +1,100 @@
+column,pct_changed,shipped_as,reaches_model,verdict
+Next Service Date,64.06806645858948,,False,RECOMPUTED per extract
+Invoice date,53.65002049244932,,False,RECOMPUTED per extract
+Sale Invoice Year,53.63898609666131,,False,RECOMPUTED per extract
+Vehicle_Key_ExpectedServices,49.32532551467575,,False,RECOMPUTED per extract
+Last Service Date - PMS,43.53069138371323,,False,RECOMPUTED per extract
+Target Revenue,41.791985875973396,,False,RECOMPUTED per extract
+Current Age,26.234275986002082,,False,RECOMPUTED per extract
+Purchase Age,23.434692140357512,Purchase Age,True,RECOMPUTED per extract
+Final Revenue,15.795737570541316,,False,RECOMPUTED per extract
+Last Service Date,14.730130205870298,,False,RECOMPUTED per extract
+Service Frequency,11.75478419874523,,False,RECOMPUTED per extract
+Last Service Mileage,11.649957438759104,Last Service Mileage,True,RECOMPUTED per extract
+Vehicle Lifetime in Months,11.643652069737382,,False,RECOMPUTED per extract
+Vehicle Lifetime in Years,11.643652069737382,,False,RECOMPUTED per extract
+Vehicle_Key_Actual_Service,10.704940256628518,,False,RECOMPUTED per extract
+Last Service - PMS,10.197358050379899,,False,RECOMPUTED per extract
+Last PMS Mileage,10.091743119266056,Last PMS Mileage,True,RECOMPUTED per extract
+Vehicle Service Status,5.117595132255115,"Vehicle Service Status_Active, Vehicle Service Status_InActive, Vehicle Service Status_Lapsed",True,RECOMPUTED per extract
+First Service Date,4.509915192786658,,False,RECOMPUTED per extract
+Total Survey,4.016520066836912,Total Survey,True,RECOMPUTED per extract
+Total Promoter,3.44273148586021,Total Promoter,True,RECOMPUTED per extract
+PMS Status,3.0778082537280493,"PMS Status_Non PMS, PMS Status_PMS Partial",True,RECOMPUTED per extract
+50K R,2.0791954349128283,,False,RECOMPUTED per extract
+80K R,2.06894921025253,,False,RECOMPUTED per extract
+70K R.1,2.05239761657051,,False,RECOMPUTED per extract
+Service Contract Status,2.0516094454427947,"Service Contract Status_Active, Service Contract Status_Expired, Service Contract Status_No SC Purchased",True,RECOMPUTED per extract
+60K R,2.050821274315079,,False,RECOMPUTED per extract
+20K R,2.026387969355907,,False,RECOMPUTED per extract
+30K R,2.0043191777798794,,False,RECOMPUTED per extract
+100K R,1.92629023613607,,False,RECOMPUTED per extract
+10K R,1.919984867114348,,False,RECOMPUTED per extract
+90K R,1.9168321826034869,,False,RECOMPUTED per extract
+20K,1.8923988776443141,,False,RECOMPUTED per extract
+40K,1.8837289952394465,,False,RECOMPUTED per extract
+10K,1.828557016299379,,False,RECOMPUTED per extract
+120K R,1.8269806740439483,,False,RECOMPUTED per extract
+110K R,1.8254043317885178,,False,RECOMPUTED per extract
+30K,1.7686560105930198,,False,RECOMPUTED per extract
+200K+   R,1.765503326082159,,False,RECOMPUTED per extract
+130K R,1.7639269838267284,,False,RECOMPUTED per extract
+140K R,1.7442227056338473,,False,RECOMPUTED per extract
+150K R,1.727671111951827,,False,RECOMPUTED per extract
+160K R,1.7032378069926541,,False,RECOMPUTED per extract
+200K R,1.6622529083514612,,False,RECOMPUTED per extract
+170K R,1.6598883949683156,,False,RECOMPUTED per extract
+180K R,1.64254863015858,,False,RECOMPUTED per extract
+190K R,1.6417604590308648,,False,RECOMPUTED per extract
+50K,1.513288565213279,,False,RECOMPUTED per extract
+40K SC,1.5014659982975505,,False,RECOMPUTED per extract
+60K,1.2697436867492669,,False,RECOMPUTED per extract
+70K,0.9781203694946247,,False,RECOMPUTED per extract
+Total Passive,0.903244112361676,Total Passive,True,RECOMPUTED per extract
+80K,0.8819634919133642,,False,RECOMPUTED per extract
+Total Detractor,0.8362495665058798,Total Detractor,True,RECOMPUTED per extract
+Current Customer,0.8252151707178662,,False,RECOMPUTED per extract
+90K,0.6202906775119014,,False,RECOMPUTED per extract
+100K,0.5659068696995492,,False,RECOMPUTED per extract
+Battery Points,0.479996216778587,,False,static
+Brake Revenue,0.47605536114001074,Brake Revenue,True,static
+Brake Points,0.4413758315205398,,False,static
+110K,0.39566190611305524,,False,static
+Gender,0.3901447082190485,"Gender_Female, Gender_Male, Gender_Other",True,static
+120K,0.3704404300261673,,False,static
+40K R,0.35546517859957755,,False,static
+70K R,0.3515243229610013,,False,static
+First Service Status,0.347583467322425,"First Service Status_Done, First Service Status_Not Done",True,static
+130K,0.31290393770295405,,False,static
+200K+,0.2451212207194426,,False,static
+140K,0.24275670733629687,,False,static
+Nationality,0.22856962703742237,,False,static
+Battery Revenue,0.22699328478199185,Battery Revenue,True,static
+Contract_PurchaseStatus_Final,0.2183234023771241,"Contract_PurchaseStatus_Final_No SC Purchased, Contract_PurchaseStatus_Final_Sold from Sales, Contract_PurchaseStatus_Final_Sold from Service",True,static
+Customer ID,0.20413632207824964,,False,static
+150K,0.20019546643967337,,False,static
+160K,0.1655159368202024,,False,static
+Vehicle Age,0.13556543396702292,,False,static
+Brake Purchase Interval,0.12216652479586368,,False,static
+Tyre Points,0.11192030013556543,,False,static
+Tyre Revenue,0.11034395788013494,Tyre Revenue,True,static
+Tyre Purchase Interval,0.1064031022415587,,False,static
+170K,0.10246224660298243,,False,static
+180K,0.0890633374318232,,False,static
+200K,0.0890633374318232,,False,static
+190K,0.08118162615467071,,False,static
+New / Used Category,0.05438380781235221,,False,static
+Franchise,0.04492575427976922,"Franchise_0, Franchise_INFINITI, Franchise_NISSAN, Franchise_NONFRAN, Franchise_RENAULT",True,static
+Model,0.03231501623632523,,False,static
+New / Used,0.027585989470033736,"New / Used_NEW, New / Used_USED",True,static
+CC,0.02128062044831174,CC,True,static
+Weight,0.01655159368202024,Weight,True,static
+Battery Purchase Interval,0.01576342255430499,,False,static
+Height,0.01576342255430499,Height,True,static
+Number of Cylinders,0.009458053532582994,Number of Cylinders,True,static
+Wheel Base,0.007093540149437245,Wheel Base,True,static
+Variant,0.005517197894006747,,False,static
+Potential Revenue,0.005517197894006747,,False,static
+AMA or Non AMA,0.0039408556385762475,"AMA or Non AMA_AMA Vehicle, AMA or Non AMA_Non AMA Vehicle",True,static
+Warranty Status,0.0,Warranty Status_Yes,True,static
+VIN,0.0,,False,static

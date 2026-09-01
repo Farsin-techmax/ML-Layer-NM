@@ -1,0 +1,28 @@
+﻿--- Candidate vs actual overlap, 2026-07-01 .. 2026-07-31 (projection cutoff 2026-06-30) ---
+EDA: 86,810 -> 48,601 vehicles after the invoice-date guard (38,209 dropped, no genuine sale date)
+base history: 773,786 dated rows, 2016-01-02 .. 2026-06-29
+cut at 2026-06-30: 773,786 rows kept
+actuals: 6,326 rows, 2026-07-01 .. 2026-07-31, 5,622 VINs
+  20k  cand    512 (open    324)  actual   526  overlap   100 (open   100)  recall  19.0%  precision  19.5%
+  30k  cand    628 (open    347)  actual   554  overlap    53 (open    53)  recall   9.6%  precision   8.4%
+  40k  cand    478 (open    309)  actual   444  overlap    32 (open    32)  recall   7.2%  precision   6.7%
+  50k  cand    566 (open    385)  actual   453  overlap    38 (open    38)  recall   8.4%  precision   6.7%
+  60k  cand    504 (open    362)  actual   356  overlap    18 (open    17)  recall   5.1%  precision   3.6%
+  70k  cand    419 (open    300)  actual   280  overlap    16 (open    15)  recall   5.7%  precision   3.8%
+  80k  cand    367 (open    302)  actual   221  overlap     7 (open     6)  recall   3.2%  precision   1.9%
+  90k  cand    402 (open    328)  actual   165  overlap     9 (open     9)  recall   5.5%  precision   2.2%
+ 100k  cand    370 (open    324)  actual   119  overlap     1 (open     1)  recall   0.8%  precision   0.3%
+
+ milestone  candidates  cand_open  actual  actual_in_eda  overlap  overlap_open  recall_%  recall_open_%  precision_%  precision_open_%
+        20         512        324     526            425      100           100      19.0           19.0         19.5              30.9
+        30         628        347     554            490       53            53       9.6            9.6          8.4              15.3
+        40         478        309     444            400       32            32       7.2            7.2          6.7              10.4
+        50         566        385     453            415       38            38       8.4            8.4          6.7               9.9
+        60         504        362     356            324       18            17       5.1            4.8          3.6               4.7
+        70         419        300     280            255       16            15       5.7            5.4          3.8               5.0
+        80         367        302     221            194        7             6       3.2            2.7          1.9               2.0
+        90         402        328     165            142        9             9       5.5            5.5          2.2               2.7
+       100         370        324     119            101        1             1       0.8            0.8          0.3               0.3
+
+All milestones: 4,246 candidates, 3,118 actual, 274 overlap -> recall 8.8%, precision 6.5%
+Per-milestone candidate lists + summary written to candidates_jul2026/

@@ -1,0 +1,2327 @@
+2026-08-17 13:10:16,658 - INFO - [Line 2762] - Starting PMS data processing
+2026-08-17 13:10:16,660 - INFO - [Line 2795] - Configuration - Filter date: 2025-12-31, Last service code: 20, Quarter: Q1 2026
+Selected Quarter: Q1 (1-3) of Year: 2026
+Quarter End Date: 2025-12-31 00:00:00, Start Date: 2025-01-01 00:00:00
+Processing for Quarter End: 2025-12-31
+
+
+🔹 Processing 20k ...
+PMS number: 20
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 1: Start Date = 2025-01-01
+Pending count after dfafter: 493
+Target Range: 0.45 to 0.55
+Iteration 1: TargetFlag ratio = 94.35% | Rows: 8046
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 2: Start Date = 2024-12-01
+Pending count after dfafter: 521
+Target Range: 0.45 to 0.55
+Iteration 2: TargetFlag ratio = 94.08% | Rows: 8069
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 3: Start Date = 2024-11-01
+Pending count after dfafter: 551
+Target Range: 0.45 to 0.55
+Iteration 3: TargetFlag ratio = 93.74% | Rows: 8098
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 4: Start Date = 2024-10-01
+Pending count after dfafter: 584
+Target Range: 0.45 to 0.55
+Iteration 4: TargetFlag ratio = 93.45% | Rows: 8123
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 5: Start Date = 2024-09-01
+Pending count after dfafter: 620
+Target Range: 0.45 to 0.55
+Iteration 5: TargetFlag ratio = 93.12% | Rows: 8152
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 6: Start Date = 2024-08-01
+Pending count after dfafter: 657
+Target Range: 0.45 to 0.55
+Iteration 6: TargetFlag ratio = 92.75% | Rows: 8184
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 7: Start Date = 2024-07-01
+Pending count after dfafter: 700
+Target Range: 0.45 to 0.55
+Iteration 7: TargetFlag ratio = 92.4% | Rows: 8215
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 8: Start Date = 2024-06-01
+Pending count after dfafter: 740
+Target Range: 0.45 to 0.55
+Iteration 8: TargetFlag ratio = 92.03% | Rows: 8248
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 9: Start Date = 2024-05-01
+Pending count after dfafter: 786
+Target Range: 0.45 to 0.55
+Iteration 9: TargetFlag ratio = 91.61% | Rows: 8286
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 10: Start Date = 2024-04-01
+Pending count after dfafter: 823
+Target Range: 0.45 to 0.55
+Iteration 10: TargetFlag ratio = 91.27% | Rows: 8317
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 11: Start Date = 2024-03-01
+Pending count after dfafter: 866
+Target Range: 0.45 to 0.55
+Iteration 11: TargetFlag ratio = 90.9% | Rows: 8351
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 12: Start Date = 2024-02-01
+Pending count after dfafter: 905
+Target Range: 0.45 to 0.55
+Iteration 12: TargetFlag ratio = 90.57% | Rows: 8381
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 13: Start Date = 2024-01-01
+Pending count after dfafter: 952
+Target Range: 0.45 to 0.55
+Iteration 13: TargetFlag ratio = 90.23% | Rows: 8413
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 14: Start Date = 2023-12-01
+Pending count after dfafter: 1015
+Target Range: 0.45 to 0.55
+Iteration 14: TargetFlag ratio = 89.83% | Rows: 8450
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 15: Start Date = 2023-11-01
+Pending count after dfafter: 1057
+Target Range: 0.45 to 0.55
+Iteration 15: TargetFlag ratio = 89.52% | Rows: 8480
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 16: Start Date = 2023-10-01
+Pending count after dfafter: 1093
+Target Range: 0.45 to 0.55
+Iteration 16: TargetFlag ratio = 89.2% | Rows: 8510
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 17: Start Date = 2023-09-01
+Pending count after dfafter: 1135
+Target Range: 0.45 to 0.55
+Iteration 17: TargetFlag ratio = 88.87% | Rows: 8542
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 18: Start Date = 2023-08-01
+Pending count after dfafter: 1156
+Target Range: 0.45 to 0.55
+Iteration 18: TargetFlag ratio = 88.69% | Rows: 8559
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 19: Start Date = 2023-07-01
+Pending count after dfafter: 1178
+Target Range: 0.45 to 0.55
+Iteration 19: TargetFlag ratio = 88.56% | Rows: 8572
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 20: Start Date = 2023-06-01
+Pending count after dfafter: 1203
+Target Range: 0.45 to 0.55
+Iteration 20: TargetFlag ratio = 88.37% | Rows: 8590
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 21: Start Date = 2023-05-01
+Pending count after dfafter: 1219
+Target Range: 0.45 to 0.55
+Iteration 21: TargetFlag ratio = 88.25% | Rows: 8602
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 22: Start Date = 2023-04-01
+Pending count after dfafter: 1242
+Target Range: 0.45 to 0.55
+Iteration 22: TargetFlag ratio = 88.06% | Rows: 8620
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 23: Start Date = 2023-03-01
+Pending count after dfafter: 1275
+Target Range: 0.45 to 0.55
+Iteration 23: TargetFlag ratio = 87.82% | Rows: 8644
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 24: Start Date = 2023-02-01
+Pending count after dfafter: 1312
+Target Range: 0.45 to 0.55
+Iteration 24: TargetFlag ratio = 87.55% | Rows: 8670
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 25: Start Date = 2023-01-01
+Pending count after dfafter: 1342
+Target Range: 0.45 to 0.55
+Iteration 25: TargetFlag ratio = 87.33% | Rows: 8692
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 26: Start Date = 2022-12-01
+Pending count after dfafter: 1387
+Target Range: 0.45 to 0.55
+Iteration 26: TargetFlag ratio = 86.97% | Rows: 8728
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 27: Start Date = 2022-11-01
+Pending count after dfafter: 1421
+Target Range: 0.45 to 0.55
+Iteration 27: TargetFlag ratio = 86.7% | Rows: 8755
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 28: Start Date = 2022-10-01
+Pending count after dfafter: 1464
+Target Range: 0.45 to 0.55
+Iteration 28: TargetFlag ratio = 86.37% | Rows: 8789
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 29: Start Date = 2022-09-01
+Pending count after dfafter: 1501
+Target Range: 0.45 to 0.55
+Iteration 29: TargetFlag ratio = 86.11% | Rows: 8815
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 30: Start Date = 2022-08-01
+Pending count after dfafter: 1583
+Target Range: 0.45 to 0.55
+Iteration 30: TargetFlag ratio = 85.51% | Rows: 8877
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 31: Start Date = 2022-07-01
+Pending count after dfafter: 1647
+Target Range: 0.45 to 0.55
+Iteration 31: TargetFlag ratio = 85.07% | Rows: 8923
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 32: Start Date = 2022-06-01
+Pending count after dfafter: 1701
+Target Range: 0.45 to 0.55
+Iteration 32: TargetFlag ratio = 84.68% | Rows: 8964
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 33: Start Date = 2022-05-01
+Pending count after dfafter: 1744
+Target Range: 0.45 to 0.55
+Iteration 33: TargetFlag ratio = 84.36% | Rows: 8998
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 34: Start Date = 2022-04-01
+Pending count after dfafter: 1785
+Target Range: 0.45 to 0.55
+Iteration 34: TargetFlag ratio = 84.05% | Rows: 9031
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 35: Start Date = 2022-03-01
+Pending count after dfafter: 1831
+Target Range: 0.45 to 0.55
+Iteration 35: TargetFlag ratio = 83.82% | Rows: 9056
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 36: Start Date = 2022-02-01
+Pending count after dfafter: 1874
+Target Range: 0.45 to 0.55
+Iteration 36: TargetFlag ratio = 83.55% | Rows: 9086
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 37: Start Date = 2022-01-01
+Pending count after dfafter: 1915
+Target Range: 0.45 to 0.55
+Iteration 37: TargetFlag ratio = 83.24% | Rows: 9119
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 38: Start Date = 2021-12-01
+Pending count after dfafter: 1968
+Target Range: 0.45 to 0.55
+Iteration 38: TargetFlag ratio = 82.9% | Rows: 9157
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 39: Start Date = 2021-11-01
+Pending count after dfafter: 2018
+Target Range: 0.45 to 0.55
+Iteration 39: TargetFlag ratio = 82.62% | Rows: 9188
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 40: Start Date = 2021-10-01
+Pending count after dfafter: 2064
+Target Range: 0.45 to 0.55
+Iteration 40: TargetFlag ratio = 82.34% | Rows: 9219
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 41: Start Date = 2021-09-01
+Pending count after dfafter: 2119
+Target Range: 0.45 to 0.55
+Iteration 41: TargetFlag ratio = 82.01% | Rows: 9256
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 42: Start Date = 2021-08-01
+Pending count after dfafter: 2158
+Target Range: 0.45 to 0.55
+Iteration 42: TargetFlag ratio = 81.77% | Rows: 9283
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 43: Start Date = 2021-07-01
+Pending count after dfafter: 2202
+Target Range: 0.45 to 0.55
+Iteration 43: TargetFlag ratio = 81.53% | Rows: 9311
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 44: Start Date = 2021-06-01
+Pending count after dfafter: 2243
+Target Range: 0.45 to 0.55
+Iteration 44: TargetFlag ratio = 81.28% | Rows: 9339
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 45: Start Date = 2021-05-01
+Pending count after dfafter: 2271
+Target Range: 0.45 to 0.55
+Iteration 45: TargetFlag ratio = 81.14% | Rows: 9356
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 46: Start Date = 2021-04-01
+Pending count after dfafter: 2294
+Target Range: 0.45 to 0.55
+Iteration 46: TargetFlag ratio = 81.01% | Rows: 9371
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 47: Start Date = 2021-03-01
+Pending count after dfafter: 2325
+Target Range: 0.45 to 0.55
+Iteration 47: TargetFlag ratio = 80.83% | Rows: 9391
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 48: Start Date = 2021-02-01
+Pending count after dfafter: 2371
+Target Range: 0.45 to 0.55
+Iteration 48: TargetFlag ratio = 80.49% | Rows: 9431
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 49: Start Date = 2021-01-01
+Pending count after dfafter: 2421
+Target Range: 0.45 to 0.55
+Iteration 49: TargetFlag ratio = 80.23% | Rows: 9462
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 50: Start Date = 2020-12-01
+Pending count after dfafter: 2463
+Target Range: 0.45 to 0.55
+Iteration 50: TargetFlag ratio = 79.98% | Rows: 9491
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 51: Start Date = 2020-11-01
+Pending count after dfafter: 2512
+Target Range: 0.45 to 0.55
+Iteration 51: TargetFlag ratio = 79.66% | Rows: 9529
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 52: Start Date = 2020-10-01
+Pending count after dfafter: 2559
+Target Range: 0.45 to 0.55
+Iteration 52: TargetFlag ratio = 79.39% | Rows: 9562
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 53: Start Date = 2020-09-01
+Pending count after dfafter: 2607
+Target Range: 0.45 to 0.55
+Iteration 53: TargetFlag ratio = 79.09% | Rows: 9598
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 54: Start Date = 2020-08-01
+Pending count after dfafter: 2649
+Target Range: 0.45 to 0.55
+Iteration 54: TargetFlag ratio = 78.83% | Rows: 9629
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 55: Start Date = 2020-07-01
+Pending count after dfafter: 2678
+Target Range: 0.45 to 0.55
+Iteration 55: TargetFlag ratio = 78.65% | Rows: 9652
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 56: Start Date = 2020-06-01
+Pending count after dfafter: 2724
+Target Range: 0.45 to 0.55
+Iteration 56: TargetFlag ratio = 78.35% | Rows: 9688
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 57: Start Date = 2020-05-01
+Pending count after dfafter: 2786
+Target Range: 0.45 to 0.55
+Iteration 57: TargetFlag ratio = 78.02% | Rows: 9730
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 58: Start Date = 2020-04-01
+Pending count after dfafter: 2844
+Target Range: 0.45 to 0.55
+Iteration 58: TargetFlag ratio = 77.65% | Rows: 9776
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 59: Start Date = 2020-03-01
+Pending count after dfafter: 2927
+Target Range: 0.45 to 0.55
+Iteration 59: TargetFlag ratio = 77.19% | Rows: 9834
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 60: Start Date = 2020-02-01
+Pending count after dfafter: 2968
+Target Range: 0.45 to 0.55
+Iteration 60: TargetFlag ratio = 76.94% | Rows: 9866
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 61: Start Date = 2020-01-01
+Pending count after dfafter: 3009
+Target Range: 0.45 to 0.55
+Iteration 61: TargetFlag ratio = 76.7% | Rows: 9897
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 62: Start Date = 2019-12-01
+Pending count after dfafter: 3048
+Target Range: 0.45 to 0.55
+Iteration 62: TargetFlag ratio = 76.48% | Rows: 9925
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 63: Start Date = 2019-11-01
+Pending count after dfafter: 3089
+Target Range: 0.45 to 0.55
+Iteration 63: TargetFlag ratio = 76.31% | Rows: 9948
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 64: Start Date = 2019-10-01
+Pending count after dfafter: 3135
+Target Range: 0.45 to 0.55
+Iteration 64: TargetFlag ratio = 76.08% | Rows: 9978
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 65: Start Date = 2019-09-01
+Pending count after dfafter: 3182
+Target Range: 0.45 to 0.55
+Iteration 65: TargetFlag ratio = 75.85% | Rows: 10008
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 66: Start Date = 2019-08-01
+Pending count after dfafter: 3222
+Target Range: 0.45 to 0.55
+Iteration 66: TargetFlag ratio = 75.62% | Rows: 10038
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 67: Start Date = 2019-07-01
+Pending count after dfafter: 3271
+Target Range: 0.45 to 0.55
+Iteration 67: TargetFlag ratio = 75.37% | Rows: 10072
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 68: Start Date = 2019-06-01
+Pending count after dfafter: 3306
+Target Range: 0.45 to 0.55
+Iteration 68: TargetFlag ratio = 75.18% | Rows: 10097
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 69: Start Date = 2019-05-01
+Pending count after dfafter: 3362
+Target Range: 0.45 to 0.55
+Iteration 69: TargetFlag ratio = 74.88% | Rows: 10138
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 70: Start Date = 2019-04-01
+Pending count after dfafter: 3410
+Target Range: 0.45 to 0.55
+Iteration 70: TargetFlag ratio = 74.6% | Rows: 10176
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 71: Start Date = 2019-03-01
+Pending count after dfafter: 3457
+Target Range: 0.45 to 0.55
+Iteration 71: TargetFlag ratio = 74.38% | Rows: 10206
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 72: Start Date = 2019-02-01
+Pending count after dfafter: 3495
+Target Range: 0.45 to 0.55
+Iteration 72: TargetFlag ratio = 74.15% | Rows: 10237
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 73: Start Date = 2019-01-01
+Pending count after dfafter: 3536
+Target Range: 0.45 to 0.55
+Iteration 73: TargetFlag ratio = 73.95% | Rows: 10265
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 74: Start Date = 2018-12-01
+Pending count after dfafter: 3593
+Target Range: 0.45 to 0.55
+Iteration 74: TargetFlag ratio = 73.71% | Rows: 10299
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 75: Start Date = 2018-11-01
+Pending count after dfafter: 3640
+Target Range: 0.45 to 0.55
+Iteration 75: TargetFlag ratio = 73.51% | Rows: 10327
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 76: Start Date = 2018-10-01
+Pending count after dfafter: 3709
+Target Range: 0.45 to 0.55
+Iteration 76: TargetFlag ratio = 73.22% | Rows: 10367
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 77: Start Date = 2018-09-01
+Pending count after dfafter: 3775
+Target Range: 0.45 to 0.55
+Iteration 77: TargetFlag ratio = 72.93% | Rows: 10409
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 78: Start Date = 2018-08-01
+Pending count after dfafter: 3839
+Target Range: 0.45 to 0.55
+Iteration 78: TargetFlag ratio = 72.63% | Rows: 10452
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 79: Start Date = 2018-07-01
+Pending count after dfafter: 3894
+Target Range: 0.45 to 0.55
+Iteration 79: TargetFlag ratio = 72.34% | Rows: 10494
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 80: Start Date = 2018-06-01
+Pending count after dfafter: 3950
+Target Range: 0.45 to 0.55
+Iteration 80: TargetFlag ratio = 72.05% | Rows: 10536
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 81: Start Date = 2018-05-01
+Pending count after dfafter: 4025
+Target Range: 0.45 to 0.55
+Iteration 81: TargetFlag ratio = 71.76% | Rows: 10578
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 82: Start Date = 2018-04-01
+Pending count after dfafter: 4089
+Target Range: 0.45 to 0.55
+Iteration 82: TargetFlag ratio = 71.49% | Rows: 10618
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 83: Start Date = 2018-03-01
+Pending count after dfafter: 4179
+Target Range: 0.45 to 0.55
+Iteration 83: TargetFlag ratio = 71.1% | Rows: 10677
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 84: Start Date = 2018-02-01
+Pending count after dfafter: 4232
+Target Range: 0.45 to 0.55
+Iteration 84: TargetFlag ratio = 70.88% | Rows: 10709
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 85: Start Date = 2018-01-01
+Pending count after dfafter: 4323
+Target Range: 0.45 to 0.55
+Iteration 85: TargetFlag ratio = 70.48% | Rows: 10770
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 86: Start Date = 2017-12-01
+Pending count after dfafter: 4418
+Target Range: 0.45 to 0.55
+Iteration 86: TargetFlag ratio = 70.07% | Rows: 10834
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 87: Start Date = 2017-11-01
+Pending count after dfafter: 4497
+Target Range: 0.45 to 0.55
+Iteration 87: TargetFlag ratio = 69.73% | Rows: 10886
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 88: Start Date = 2017-10-01
+Pending count after dfafter: 4606
+Target Range: 0.45 to 0.55
+Iteration 88: TargetFlag ratio = 69.29% | Rows: 10955
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 89: Start Date = 2017-09-01
+Pending count after dfafter: 4727
+Target Range: 0.45 to 0.55
+Iteration 89: TargetFlag ratio = 68.73% | Rows: 11044
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 90: Start Date = 2017-08-01
+Pending count after dfafter: 4824
+Target Range: 0.45 to 0.55
+Iteration 90: TargetFlag ratio = 68.33% | Rows: 11109
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 91: Start Date = 2017-07-01
+Pending count after dfafter: 4942
+Target Range: 0.45 to 0.55
+Iteration 91: TargetFlag ratio = 67.9% | Rows: 11179
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 92: Start Date = 2017-06-01
+Pending count after dfafter: 5048
+Target Range: 0.45 to 0.55
+Iteration 92: TargetFlag ratio = 67.55% | Rows: 11238
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 93: Start Date = 2017-05-01
+Pending count after dfafter: 5184
+Target Range: 0.45 to 0.55
+Iteration 93: TargetFlag ratio = 66.96% | Rows: 11336
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 94: Start Date = 2017-04-01
+Pending count after dfafter: 5270
+Target Range: 0.45 to 0.55
+Iteration 94: TargetFlag ratio = 66.65% | Rows: 11390
+DFTarget:  79165
+Filtered DF: 25493
+20k - Iteration 95: Start Date = 2017-03-01
+Pending count after dfafter: 5363
+Target Range: 0.45 to 0.55
+Iteration 95: TargetFlag ratio = 66.25% | Rows: 11458
+📅 Final start date for 20k: 2017-02-01
+🎯 Final TargetFlag ratio: 66.25% | Rows: 11458
+✅ 20k dataset saved: TestTrain_20k.csv
+2026-08-17 13:20:00,316 - INFO - [Line 2196] - Starting service data processing
+2026-08-17 13:20:00,317 - INFO - [Line 2201] - Filter date: 2025-12-31 00:00:00
+2026-08-17 13:20:00,317 - INFO - [Line 2216] - Reading master sheet data
+2026-08-17 13:20:00,317 - INFO - [Line 2223] - Converting dates in master sheet
+2026-08-17 13:20:00,366 - INFO - [Line 2227] - Master sheet shape after date filtering: (8609, 103)
+2026-08-17 13:20:00,369 - INFO - [Line 2236] - Reading service history data
+2026-08-17 13:20:05,600 - INFO - [Line 2240] - Processing service history data
+2026-08-17 13:20:06,024 - WARNING - [Line 2244] - Found 3845 invalid dates in service history
+2026-08-17 13:20:06,274 - INFO - [Line 2247] - Service history shape after date filtering: (732101, 18)
+2026-08-17 13:20:06,275 - INFO - [Line 2249] - Converting numeric columns
+2026-08-17 13:20:06,965 - INFO - [Line 2253] - Processing service numbers
+2026-08-17 13:20:08,079 - INFO - [Line 2258] - Filtering and processing service data
+Completed filtering service data for PMS features
+2026-08-17 13:20:08,763 - INFO - [Line 2268] - Max service number in data: 20
+2026-08-17 13:20:08,763 - INFO - [Line 2269] - Max Service date in data: 2025-12-31 00:00:00
+2026-08-17 13:20:08,763 - INFO - [Line 2275] - Aggregating service data
+2026-08-17 13:20:08,791 - INFO - [Line 2282] - UNIQUE VINS in service data: 8609
+2026-08-17 13:20:08,792 - INFO - [Line 2285] - Starting feature derivation
+2026-08-17 13:20:08,792 - INFO - [Line 2289] - Deriving PMS features
+2026-08-17 13:20:19,561 - INFO - [Line 2292] - Last Non PMS Mileage calculation
+2026-08-17 13:20:19,749 - INFO - [Line 2296] - Deriving NPMS features
+2026-08-17 13:20:43,103 - INFO - [Line 2299] - Deriving NonPMS Mileage
+2026-08-17 13:20:43,640 - INFO - [Line 2304] - Calculating average mileage intervals for PMS
+2026-08-17 13:21:50,672 - INFO - [Line 2307] - Calculating average mileage intervals for NPMS
+2026-08-17 13:23:17,428 - INFO - [Line 2310] - Deriving PMS service intervals
+2026-08-17 13:23:40,955 - INFO - [Line 2313] - Adjusting service intervals
+2026-08-17 13:23:40,969 - INFO - [Line 2316] - Calculating NPMS metrics
+2026-08-17 13:23:43,540 - INFO - [Line 2320] - Calculating NPMS/PMS Revenue metrics
+2026-08-17 13:23:43,817 - INFO - [Line 2328] - Logging descriptive statistics
+2026-08-17 13:23:43,822 - INFO - [Line 2329] - NPMS counts:
+count    3336.000000
+mean        1.404376
+std         0.897689
+min         1.000000
+25%         1.000000
+50%         1.000000
+75%         2.000000
+max        27.000000
+Name: nNPMS, dtype: float64
+2026-08-17 13:23:43,829 - INFO - [Line 2330] - NPMS revenue:
+count     91812.000000
+mean       5510.488745
+std       11188.409177
+min           0.000000
+25%         320.000000
+50%        1519.000000
+75%        6549.000000
+max      506400.000000
+Name: npmsRevenue, dtype: float64
+2026-08-17 13:23:43,834 - INFO - [Line 2331] - PMS counts:
+count    76912.000000
+mean         2.114859
+std          0.874631
+min          1.000000
+25%          1.000000
+50%          2.000000
+75%          3.000000
+max          3.000000
+Name: nPMS, dtype: float64
+2026-08-17 13:23:43,842 - INFO - [Line 2332] - Freq NPMS:
+count    91812.000000
+mean         4.246398
+std          6.030475
+min          0.000000
+25%          0.000000
+50%          2.000000
+75%          6.500000
+max         57.000000
+Name: freq_NPMS, dtype: float64
+2026-08-17 13:23:43,842 - INFO - [Line 2334] - Aggregating service data
+2026-08-17 13:23:43,877 - INFO - [Line 2340] - UNIQUE VINS in service data: 8609
+2026-08-17 13:23:43,880 - INFO - [Line 2343] - NPMS counts:
+count    3336.000000
+mean        1.404376
+std         0.897689
+min         1.000000
+25%         1.000000
+50%         1.000000
+75%         2.000000
+max        27.000000
+Name: nNPMS, dtype: float64
+2026-08-17 13:23:43,889 - INFO - [Line 2344] - NPMS revenue:
+count     91812.000000
+mean       5510.488745
+std       11188.409177
+min           0.000000
+25%         320.000000
+50%        1519.000000
+75%        6549.000000
+max      506400.000000
+Name: npmsRevenue, dtype: float64
+2026-08-17 13:23:43,894 - INFO - [Line 2345] - PMS counts:
+count    76912.000000
+mean         2.114859
+std          0.874631
+min          1.000000
+25%          1.000000
+50%          2.000000
+75%          3.000000
+max          3.000000
+Name: nPMS, dtype: float64
+2026-08-17 13:23:43,904 - INFO - [Line 2346] - Freq NPMS:
+count    91812.000000
+mean         4.246398
+std          6.030475
+min          0.000000
+25%          0.000000
+50%          2.000000
+75%          6.500000
+max         57.000000
+Name: freq_NPMS, dtype: float64
+2026-08-17 13:23:43,904 - INFO - [Line 2349] - Calculating branch-related features
+2026-08-17 13:23:48,377 - INFO - [Line 2379] - Merging all features
+Merging NPMS counts: True
+2026-08-17 13:23:48,378 - INFO - [Line 2407] - Merging NPMS counts
+Merging NPMS counts, Type: <class 'pandas.DataFrame'>
+Merging NPMS events: True
+2026-08-17 13:23:48,386 - INFO - [Line 2407] - Merging NPMS events
+Merging NPMS events, Type: <class 'pandas.DataFrame'>
+Merging PMS dates: True
+2026-08-17 13:23:48,428 - INFO - [Line 2407] - Merging PMS dates
+Merging PMS dates, Type: <class 'pandas.DataFrame'>
+Merging NPMS dates: True
+2026-08-17 13:23:48,506 - INFO - [Line 2407] - Merging NPMS dates
+Merging NPMS dates, Type: <class 'pandas.DataFrame'>
+Merging Mileage intervals PMS: True
+2026-08-17 13:23:48,579 - INFO - [Line 2407] - Merging Mileage intervals PMS
+Merging Mileage intervals PMS, Type: <class 'pandas.DataFrame'>
+Merging Mileage intervals NPMS: True
+2026-08-17 13:23:48,670 - INFO - [Line 2407] - Merging Mileage intervals NPMS
+Merging Mileage intervals NPMS, Type: <class 'pandas.DataFrame'>
+Merging NPMS revenue: True
+2026-08-17 13:23:48,754 - INFO - [Line 2407] - Merging NPMS revenue
+Merging NPMS revenue, Type: <class 'pandas.DataFrame'>
+Merging PMS/NPMS revenue: True
+2026-08-17 13:23:48,798 - INFO - [Line 2407] - Merging PMS/NPMS revenue
+Merging PMS/NPMS revenue, Type: <class 'pandas.DataFrame'>
+Merging Branch visits: True
+2026-08-17 13:23:48,806 - INFO - [Line 2407] - Merging Branch visits
+Merging Branch visits, Type: <class 'pandas.DataFrame'>
+Merging Monthly intervals: True
+2026-08-17 13:23:48,815 - INFO - [Line 2407] - Merging Monthly intervals
+Merging Monthly intervals, Type: <class 'pandas.DataFrame'>
+Merging NPMS frequency: True
+2026-08-17 13:23:48,867 - INFO - [Line 2407] - Merging NPMS frequency
+Merging NPMS frequency, Type: <class 'pandas.DataFrame'>
+Merging Branch diversity: True
+2026-08-17 13:23:48,909 - INFO - [Line 2407] - Merging Branch diversity
+Merging Branch diversity, Type: <class 'pandas.DataFrame'>
+Merging Last Non-PMS mileage: True
+2026-08-17 13:23:48,918 - INFO - [Line 2407] - Merging Last Non-PMS mileage
+Merging Last Non-PMS mileage, Type: <class 'pandas.DataFrame'>
+Merging Complaint features: True
+2026-08-17 13:23:48,930 - INFO - [Line 2407] - Merging Complaint features
+Merging Complaint features, Type: <class 'pandas.DataFrame'>
+2026-08-17 13:23:48,936 - INFO - [Line 2417] - Handling missing values
+2026-08-17 13:23:48,943 - INFO - [Line 2424] - Performing final data transformations
+2026-08-17 13:23:48,945 - INFO - [Line 2429] - Merging with master train data
+2026-08-17 13:23:56,587 - INFO - [Line 2531] - Processing completed. Final shape: (8609, 238)
+VIN
+
+
+Vehicle Key
+
+
+Customer ID
+
+
+Franchise
+
+
+Model
+
+
+Variant
+
+
+Vehicle_Key_ExpectedServices
+
+
+Vehicle_Key_Actual_Service
+
+
+AMA or Non AMA
+
+
+New / Used
+
+
+Vehicle Age
+
+
+PMS Status
+
+
+Current Age
+
+
+Purchase Age
+
+
+Gender
+
+
+Nationality
+
+
+Vehicle Service Status
+
+
+Last Service Date - PMS
+
+
+Last Service Mileage
+
+
+First Service Status
+
+
+Warranty Status
+
+
+Service Contract Status
+
+
+10K
+
+
+10K R
+
+
+20K
+
+
+20K R
+
+
+30K
+
+
+30K R
+
+
+70K R
+
+
+40K
+
+
+40K R
+
+
+40K SC
+
+
+50K
+
+
+50K R
+
+
+60K
+
+
+60K R
+
+
+70K
+
+
+70K R.1
+
+
+80K
+
+
+80K R
+
+
+90K
+
+
+90K R
+
+
+100K
+
+
+100K R
+
+
+110K
+
+
+110K R
+
+
+120K
+
+
+120K R
+
+
+130K
+
+
+130K R
+
+
+140K
+
+
+140K R
+
+
+150K
+
+
+150K R
+
+
+160K
+
+
+160K R
+
+
+170K
+
+
+170K R
+
+
+180K
+
+
+180K R
+
+
+190K
+
+
+190K R
+
+
+200K
+
+
+200K R
+
+
+200K+
+
+
+200K+   R
+
+
+Brake Purchase Interval
+
+
+Tyre Purchase Interval
+
+
+Battery Purchase Interval
+
+
+Vehicle Lifetime in Months
+
+
+Total Promoter
+
+
+Total Passive
+
+
+Total Detractor
+
+
+Total Survey
+
+
+Tyre Points
+
+
+Tyre Revenue
+
+
+Battery Points
+
+
+Battery Revenue
+
+
+Brake Points
+
+
+Brake Revenue
+
+
+Contract_PurchaseStatus_Final
+
+
+CC
+
+
+Number of Cylinders
+
+
+Weight
+
+
+Height
+
+
+Wheel Base
+
+
+Service Frequency
+
+
+Last PMS Mileage
+
+
+Service_Num
+
+
+TargetFlag
+
+
+Next20K_Due
+
+
+Service_Date
+
+
+Mileage
+
+
+nNPMS
+
+
+Last_Service_Non_PMS_Flag
+
+
+LastNPMS_Event_15,000 kms Service
+
+
+LastNPMS_Event_5,000 km Service
+
+
+LastNPMS_Event_Body repair
+
+
+LastNPMS_Event_DEFECT REPORT
+
+
+LastNPMS_Event_Electrical work
+
+
+LastNPMS_Event_General mechanical
+
+
+LastNPMS_Event_NOT
+
+
+LastNPMS_Event_Oil Filter Change
+
+
+LastNPMS_Event_Repair under warranty
+
+
+LastNPMS_Event_SERVPACK XX to YY
+
+
+LastNPMS_Rev_15,000 kms Service
+
+
+LastNPMS_Rev_Body repair
+
+
+LastNPMS_Rev_General mechanical
+
+
+LastNPMS_Rev_Oil Filter Change
+
+
+LastNPMS_Rev_Oth
+
+
+LastNPMS_Rev_Repair under warranty
+
+
+Months_Since_Last_PMS
+
+
+SinglePMS
+
+
+Months_Since_Last_NPMS
+
+
+Avg_Mileage_Interval_PMSold
+
+
+Avg_Mileage_Interval_PMS
+
+
+Avg_Mileage_Interval_NPMS
+
+
+npmsRevenue
+
+
+Last_NonPMS_Revenue
+
+
+Days_Since_Last_NonPMS
+
+
+Last_PMS_Revenue
+
+
+Max_PMS_Revenue
+
+
+Min_PMS_Revenue
+
+
+StdDev_PMS_Revenue
+
+
+21 NM - Alain
+
+
+22 NM - Mussafah Complex
+
+
+11 NM Airport Road
+
+
+74 NM - Beda Zayed
+
+
+31 INF - Mussafah Complex
+
+
+76 GHQ - Projects P&S
+
+
+60 Renault Cars - AUH
+
+
+otherbranch_services
+
+
+Avg_Service_Interval_PMSold
+
+
+Avg_Service_Interval_PMS1old
+
+
+Avg_Service_Interval_PMSper10k
+
+
+Avg_Service_Interval_PMS
+
+
+freq_NPMS
+
+
+unique_branch_serviced
+
+
+LastNonPMSMileage
+
+
+latest_complaint_category
+
+
+has_complaint_history
+
+
+num_past_complaints
+
+
+avg_complaint_resolution_days
+
+
+max_complaint_resolution_days
+
+
+recent_complaint_resolution_days
+
+
+Lost Revenue
+
+
+Deferred Revenue
+
+
+Invoiced Revenue
+
+
+Other VHC Revenue
+
+
+Total VHC Revenue
+
+
+VHC Revenue Convertion
+
+
+Deferred Revenue Ratio
+
+
+VHC Revenue at Risk(%)
+
+
+vhc_Lost
+
+
+vhc_Deferred
+
+
+vhc_Invoiced
+
+
+VHC_Criticality_Red
+
+
+VHC_Criticality_Amber
+
+
+LostPart__Other Components
+
+
+LostPart__Tyres (General)
+
+
+LostPart__Wiper Blades
+
+
+LostPart__Wheels & Alignment
+
+
+LostPart__Front Wiper Blades
+
+
+LostPart__Air Conditioning System
+
+
+LostPart__Battery
+
+
+LostPart__Brake System (General)
+
+
+LostPart__Front Brake Pads
+
+
+LostPart__Air Filter
+
+
+LostPart__Rear Wiper Blade
+
+
+LostPart__Exhaust System
+
+
+LostPart__Rear Brake Pads
+
+
+LostPart__Engine Oil Leakage
+
+
+LostPart__Spare Tyre
+
+
+LostPart__Cooling System
+
+
+LostPart__Steering System
+
+
+LostPart__Lights
+
+
+LostPart__Battery â Positive Terminal
+
+
+LostPart__Rear Tyre
+
+
+InvoicedPart__Other Components
+
+
+InvoicedPart__Wiper Blades
+
+
+InvoicedPart__Air Conditioning System
+
+
+InvoicedPart__Battery
+
+
+InvoicedPart__Tyres (General)
+
+
+InvoicedPart__Front Wiper Blades
+
+
+InvoicedPart__Brake System (General)
+
+
+InvoicedPart__Engine Oil Leakage
+
+
+InvoicedPart__Air Filter
+
+
+InvoicedPart__Front Brake Pads
+
+
+InvoicedPart__Wheels & Alignment
+
+
+InvoicedPart__Cooling System
+
+
+InvoicedPart__Rear Brake Pads
+
+
+InvoicedPart__Rear Wiper Blade
+
+
+InvoicedPart__Horn
+
+
+DeferredPart__Other Components
+
+
+DeferredPart__Tyres (General)
+
+
+DeferredPart__Wheels & Alignment
+
+
+DeferredPart__Wiper Blades
+
+
+DeferredPart__Air Conditioning System
+
+
+DeferredPart__Battery
+
+
+DeferredPart__Front Wiper Blades
+
+
+DeferredPart__Brake System (General)
+
+
+DeferredPart__Front Brake Pads
+
+
+DeferredPart__Exhaust System
+
+
+DeferredPart__Rear Brake Pads
+
+
+DeferredPart__Spare Tyre
+
+
+DeferredPart__Air Filter
+
+
+DeferredPart__Rear Wiper Blade
+
+
+DeferredPart__Lights
+
+
+DeferredPart__Cooling System
+
+
+DeferredPart__Engine Oil Leakage
+
+
+DeferredPart__Engine Oil
+
+
+DeferredPart__Steering System
+
+
+DeferredPart__Battery â Positive Terminal
+
+
+Red_Lost_Revenue_Pct
+
+
+Red_Deferred_Revenue_Pct
+
+
+Red_Invoiced_Revenue_Pct
+
+
+VHC Completed_Flag
+
+
+last_appointment_status
+
+
+last_appointment_delay_days
+
+
+no_of_late_appointments
+
+
+Avg_appointment_delay_days
+
+
+total_appointments_showed_up
+
+
+no_of_appointments_booked_but_not_showed_up
+
+
+appointment_booked_showed_up_atleastonce
+
+
+no_of_service_appointments_booked
+
+
+RFM_segments
+
+
+VIN
+
+
+
+
+Vehicle Key
+
+
+
+
+Customer ID
+
+
+
+
+Franchise
+
+
+
+
+Model
+
+
+
+
+Variant
+
+
+
+
+Vehicle_Key_ExpectedServices
+
+
+
+
+Vehicle_Key_Actual_Service
+
+
+
+
+AMA or Non AMA
+
+
+
+
+New / Used
+
+
+
+
+Vehicle Age
+
+
+
+
+PMS Status
+
+
+
+
+Current Age
+
+
+
+
+Purchase Age
+
+
+
+
+Gender
+
+
+
+
+Nationality
+
+
+
+
+Vehicle Service Status
+
+
+
+
+Last Service Date - PMS
+
+
+
+
+Last Service Mileage
+
+
+
+
+First Service Status
+
+
+
+
+Warranty Status
+
+
+
+
+Service Contract Status
+
+
+
+
+Vehicle Lifetime in Months
+
+
+
+
+Total Promoter
+
+
+
+
+Total Passive
+
+
+
+
+Total Detractor
+
+
+
+
+Total Survey
+
+
+
+
+Tyre Points
+
+
+
+
+Tyre Revenue
+
+
+
+
+Battery Points
+
+
+
+
+Battery Revenue
+
+
+
+
+Brake Points
+
+
+
+
+Brake Revenue
+
+
+
+
+Contract_PurchaseStatus_Final
+
+
+
+
+CC
+
+
+
+
+Number of Cylinders
+
+
+
+
+Weight
+
+
+
+
+Height
+
+
+
+
+Wheel Base
+
+
+
+
+Service Frequency
+
+
+
+
+Last PMS Mileage
+
+
+
+
+Service_Num
+
+
+
+
+TargetFlag
+
+
+
+
+Next20K_Due
+
+
+
+
+Service_Date
+
+
+
+
+Mileage
+
+
+
+
+nNPMS
+
+
+
+
+Last_Service_Non_PMS_Flag
+
+
+
+
+LastNPMS_Event_15,000 kms Service
+
+
+
+
+LastNPMS_Event_5,000 km Service
+
+
+
+
+LastNPMS_Event_Body repair
+
+
+
+
+LastNPMS_Event_DEFECT REPORT
+
+
+
+
+LastNPMS_Event_Electrical work
+
+
+
+
+LastNPMS_Event_General mechanical
+
+
+
+
+LastNPMS_Event_NOT
+
+
+
+
+LastNPMS_Event_Oil Filter Change
+
+
+
+
+LastNPMS_Event_Repair under warranty
+
+
+
+
+LastNPMS_Event_SERVPACK XX to YY
+
+
+
+
+LastNPMS_Rev_15,000 kms Service
+
+
+
+
+LastNPMS_Rev_Body repair
+
+
+
+
+LastNPMS_Rev_General mechanical
+
+
+
+
+LastNPMS_Rev_Oil Filter Change
+
+
+
+
+LastNPMS_Rev_Oth
+
+
+
+
+LastNPMS_Rev_Repair under warranty
+
+
+
+
+Months_Since_Last_PMS
+
+
+
+
+SinglePMS
+
+
+
+
+Months_Since_Last_NPMS
+
+
+
+
+Avg_Mileage_Interval_PMSold
+
+
+
+
+Avg_Mileage_Interval_PMS
+
+
+
+
+Avg_Mileage_Interval_NPMS
+
+
+
+
+npmsRevenue
+
+
+
+
+Last_NonPMS_Revenue
+
+
+
+
+Days_Since_Last_NonPMS
+
+
+
+
+Last_PMS_Revenue
+
+
+
+
+Max_PMS_Revenue
+
+
+
+
+Min_PMS_Revenue
+
+
+
+
+StdDev_PMS_Revenue
+
+
+
+
+21 NM - Alain
+
+
+
+
+22 NM - Mussafah Complex
+
+
+
+
+11 NM Airport Road
+
+
+
+
+74 NM - Beda Zayed
+
+
+
+
+31 INF - Mussafah Complex
+
+
+
+
+76 GHQ - Projects P&S
+
+
+
+
+60 Renault Cars - AUH
+
+
+
+
+otherbranch_services
+
+
+
+
+Avg_Service_Interval_PMSold
+
+
+
+
+Avg_Service_Interval_PMS1old
+
+
+
+
+Avg_Service_Interval_PMSper10k
+
+
+
+
+Avg_Service_Interval_PMS
+
+
+
+
+freq_NPMS
+
+
+
+
+unique_branch_serviced
+
+
+
+
+LastNonPMSMileage
+
+
+
+
+latest_complaint_category
+
+
+
+
+has_complaint_history
+
+
+
+
+num_past_complaints
+
+
+
+
+avg_complaint_resolution_days
+
+
+
+
+max_complaint_resolution_days
+
+
+
+
+recent_complaint_resolution_days
+
+
+
+
+Lost Revenue
+
+
+
+
+Deferred Revenue
+
+
+
+
+Invoiced Revenue
+
+
+
+
+Other VHC Revenue
+
+
+
+
+Total VHC Revenue
+
+
+
+
+VHC Revenue Convertion
+
+
+
+
+Deferred Revenue Ratio
+
+
+
+
+VHC Revenue at Risk(%)
+
+
+
+
+vhc_Lost
+
+
+
+
+vhc_Deferred
+
+
+
+
+vhc_Invoiced
+
+
+
+
+VHC_Criticality_Red
+
+
+
+
+VHC_Criticality_Amber
+
+
+
+
+LostPart__Other Components
+
+
+
+
+LostPart__Tyres (General)
+
+
+
+
+LostPart__Wiper Blades
+
+
+
+
+LostPart__Wheels & Alignment
+
+
+
+
+LostPart__Front Wiper Blades
+
+
+
+
+LostPart__Air Conditioning System
+
+
+
+
+LostPart__Battery
+
+
+
+
+LostPart__Brake System (General)
+
+
+
+
+LostPart__Front Brake Pads
+
+
+
+
+LostPart__Air Filter
+
+
+
+
+LostPart__Rear Wiper Blade
+
+
+
+
+LostPart__Exhaust System
+
+
+
+
+LostPart__Rear Brake Pads
+
+
+
+
+LostPart__Engine Oil Leakage
+
+
+
+
+LostPart__Spare Tyre
+
+
+
+
+LostPart__Cooling System
+
+
+
+
+LostPart__Steering System
+
+
+
+
+LostPart__Lights
+
+
+
+
+LostPart__Battery â Positive Terminal
+
+
+
+
+LostPart__Rear Tyre
+
+
+
+
+InvoicedPart__Other Components
+
+
+
+
+InvoicedPart__Wiper Blades
+
+
+
+
+InvoicedPart__Air Conditioning System
+
+
+
+
+InvoicedPart__Battery
+
+
+
+
+InvoicedPart__Tyres (General)
+
+
+
+
+InvoicedPart__Front Wiper Blades
+
+
+
+
+InvoicedPart__Brake System (General)
+
+
+
+
+InvoicedPart__Engine Oil Leakage
+
+
+
+
+InvoicedPart__Air Filter
+
+
+
+
+InvoicedPart__Front Brake Pads
+
+
+
+
+InvoicedPart__Wheels & Alignment
+
+
+
+
+InvoicedPart__Cooling System
+
+
+
+
+InvoicedPart__Rear Brake Pads
+
+
+
+
+InvoicedPart__Rear Wiper Blade
+
+
+
+
+InvoicedPart__Horn
+
+
+
+
+DeferredPart__Other Components
+
+
+
+
+DeferredPart__Tyres (General)
+
+
+
+
+DeferredPart__Wheels & Alignment
+
+
+
+
+DeferredPart__Wiper Blades
+
+
+
+
+DeferredPart__Air Conditioning System
+
+
+
+
+DeferredPart__Battery
+
+
+
+
+DeferredPart__Front Wiper Blades
+
+
+
+
+DeferredPart__Brake System (General)
+
+
+
+
+DeferredPart__Front Brake Pads
+
+
+
+
+DeferredPart__Exhaust System
+
+
+
+
+DeferredPart__Rear Brake Pads
+
+
+
+
+DeferredPart__Spare Tyre
+
+
+
+
+DeferredPart__Air Filter
+
+
+
+
+DeferredPart__Rear Wiper Blade
+
+
+
+
+DeferredPart__Lights
+
+
+
+
+DeferredPart__Cooling System
+
+
+
+
+DeferredPart__Engine Oil Leakage
+
+
+
+
+DeferredPart__Engine Oil
+
+
+
+
+DeferredPart__Steering System
+
+
+
+
+DeferredPart__Battery â Positive Terminal
+
+
+
+
+Red_Lost_Revenue_Pct
+
+
+
+
+Red_Deferred_Revenue_Pct
+
+
+
+
+Red_Invoiced_Revenue_Pct
+
+
+
+
+VHC Completed_Flag
+
+
+
+
+last_appointment_status
+
+
+
+
+last_appointment_delay_days
+
+
+
+
+no_of_late_appointments
+
+
+
+
+Avg_appointment_delay_days
+
+
+
+
+total_appointments_showed_up
+
+
+
+
+no_of_appointments_booked_but_not_showed_up
+
+
+
+
+appointment_booked_showed_up_atleastonce
+
+
+
+
+no_of_service_appointments_booked
+
+
+
+
+RFM_segments
+
+
+
+
+wearablesBought
+
+
+
+
+PMSRevenue
+
+
+
+
+Dtype of Vehicle_Key_ExpectedServices: int64
+Dtype of Vehicle_Key_Actual_Service: int64
+Before one hot encoding

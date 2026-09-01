@@ -1,0 +1,168 @@
+column,pct_changed,source,verdict,shipped
+Variant_Cluster_4,81.0,EDA-onehot,cutoff-sensitive,False
+Variant_Cluster_1,77.17500000000001,EDA-onehot,cutoff-sensitive,False
+Months_Since_Last_PMS,62.175000000000004,derived,cutoff-sensitive,True
+Years_Since_First_PMS,62.175000000000004,derived,cutoff-sensitive,True
+PMS_Freq_PerYear,62.175000000000004,derived,cutoff-sensitive,True
+PMS_Delay_DerivedB,62.175000000000004,derived,cutoff-sensitive,False
+Days_Since_Last_NonPMS,51.675000000000004,derived,cutoff-sensitive,True
+Months_Since_Last_NPMS,51.075,derived,cutoff-sensitive,True
+Variant_Cluster_3,22.075,EDA-onehot,cutoff-sensitive,False
+no_of_service_appointments_booked,20.1,derived,cutoff-sensitive,True
+Avg_Mileage_Interval_PMSold,19.25,derived,cutoff-sensitive,True
+Avg_Mileage_Interval_PMS,19.25,derived,cutoff-sensitive,True
+Variant_Cluster_2,18.25,EDA-onehot,cutoff-sensitive,False
+total_appointments_showed_up,16.75,derived,cutoff-sensitive,True
+Model_Cluster_4,15.55,EDA-onehot,cutoff-sensitive,False
+Model_Cluster_3,15.375,EDA-onehot,cutoff-sensitive,False
+Avg_Service_Interval_PMSold,14.674999999999999,derived,cutoff-sensitive,True
+Avg_Service_Interval_PMSper10k,14.674999999999999,derived,cutoff-sensitive,True
+Avg_Service_Interval_PMS1old,14.625,derived,cutoff-sensitive,True
+Avg_Service_Interval_PMS,14.625,derived,cutoff-sensitive,True
+Avg_Mileage_Interval_NPMS,12.4,derived,cutoff-sensitive,True
+LastNonPMSMileage,11.899999999999999,derived,cutoff-sensitive,True
+freq_NPMS,11.575000000000001,derived,cutoff-sensitive,True
+no_of_appointments_booked_but_not_showed_up,10.15,derived,cutoff-sensitive,True
+Last_NonPMS_Revenue,9.225,derived,cutoff-sensitive,True
+npmsRevenue,9.075,derived,cutoff-sensitive,True
+Last Service Mileage,3.7249999999999996,EDA-direct,cutoff-sensitive,True
+Bodyshop_Services,1.6,derived,cutoff-sensitive,True
+appointment_booked_showed_up_atleastonce,1.425,derived,cutoff-sensitive,True
+Model_Cluster_2,0.17500000000000002,EDA-onehot,static,False
+Max_PMS_Revenue,0.15,derived,static,True
+PMS_Count_Prior,0.15,derived,static,True
+months_base_to_10,0.15,derived,static,True
+PMS_Delay_DerivedA,0.15,derived,static,False
+SinglePMS,0.15,derived,static,True
+has_10,0.15,derived,static,True
+Last_PMS_Revenue,0.15,derived,static,True
+StdDev_PMS_Revenue,0.125,derived,static,True
+last_appointment_status_No Appointment,0.125,derived,static,True
+last_appointment_status_LATE_SHOW,0.1,derived,static,True
+last_appointment_delay_days,0.1,derived,static,True
+no_of_late_appointments,0.1,derived,static,True
+Avg_appointment_delay_days,0.1,derived,static,True
+21 NM - Alain,0.075,derived,static,True
+22 NM - Mussafah Complex,0.075,derived,static,True
+unique_branch_serviced,0.05,derived,static,True
+last_appointment_status_IN_DUE_TIME,0.025,derived,static,True
+Min_PMS_Revenue,0.025,derived,static,True
+Last PMS Mileage,0.025,EDA-direct,static,True
+31 INF - Mussafah Complex,0.025,derived,static,True
+Multiplier,0.025,derived,static,True
+Total Passive,0.0,EDA-direct,static,True
+Total Detractor,0.0,EDA-direct,static,True
+Total Survey,0.0,EDA-direct,static,True
+Tyre Revenue,0.0,EDA-direct,static,True
+Purchase Age,0.0,EDA-direct,static,True
+Last Service Date - PMS,0.0,EDA-direct,static,False
+Vehicle Key,0.0,EDA-direct,static,False
+Customer ID,0.0,EDA-direct,static,False
+Next20K_Due,0.0,derived,static,False
+Vehicle_Key_Actual_Service,0.0,EDA-direct,static,False
+Vehicle Age,0.0,EDA-direct,static,False
+Current Age,0.0,EDA-direct,static,False
+Battery Revenue,0.0,EDA-direct,static,True
+Brake Revenue,0.0,EDA-direct,static,True
+CC,0.0,EDA-direct,static,True
+Number of Cylinders,0.0,EDA-direct,static,True
+Weight,0.0,EDA-direct,static,True
+Height,0.0,EDA-direct,static,True
+Wheel Base,0.0,EDA-direct,static,True
+Service_Num,0.0,derived,static,False
+Last_Service_Non_PMS_Flag,0.0,derived,static,True
+nNPMS,0.0,derived,static,True
+Vehicle Lifetime in Months,0.0,EDA-direct,static,False
+Total Promoter,0.0,EDA-direct,static,True
+Lost Revenue,0.0,derived,static,True
+Invoiced Revenue,0.0,derived,static,True
+Other VHC Revenue,0.0,derived,static,True
+Total VHC Revenue,0.0,derived,static,True
+LostPart__-,0.0,derived,static,True
+LostPart__Air Conditioning System,0.0,derived,static,True
+LostPart__Battery,0.0,derived,static,True
+LostPart__Battery – Positive Terminal,0.0,derived,static,False
+VHC Revenue at Risk(%),0.0,derived,static,True
+Red_Lost_Revenue_Pct,0.0,derived,static,True
+VHC Revenue Convertion,0.0,derived,static,True
+Deferred Revenue Ratio,0.0,derived,static,True
+33 INF - Alain,0.0,derived,static,False
+76 GHQ - Projects P&S,0.0,derived,static,False
+otherbranch_services,0.0,derived,static,True
+has_complaint_history,0.0,derived,static,True
+num_past_complaints,0.0,derived,static,True
+avg_complaint_resolution_days,0.0,derived,static,True
+max_complaint_resolution_days,0.0,derived,static,True
+recent_complaint_resolution_days,0.0,derived,static,True
+vhc_Lost,0.0,derived,static,True
+vhc_Deferred,0.0,derived,static,True
+vhc_Invoiced,0.0,derived,static,True
+VHC_Criticality_Red,0.0,derived,static,True
+VHC_Criticality_Amber,0.0,derived,static,True
+Deferred Revenue,0.0,derived,static,True
+74 NM - Beda Zayed,0.0,derived,static,True
+11 NM Airport Road,0.0,derived,static,True
+DeferredPart__Wiper Blades,0.0,derived,static,True
+VHC Completed_Flag,0.0,derived,static,True
+DeferredPart__Tyres (General),0.0,derived,static,True
+DeferredPart__Wheels & Alignment,0.0,derived,static,True
+DeferredPart__Other Components,0.0,derived,static,True
+DeferredPart__Battery,0.0,derived,static,True
+InvoicedPart__Other Components,0.0,derived,static,False
+DeferredPart__-,0.0,derived,static,True
+InvoicedPart__-,0.0,derived,static,False
+LostPart__Wiper Blades,0.0,derived,static,True
+InvoicedPart__Battery,0.0,derived,static,False
+InvoicedPart__Air Conditioning System,0.0,derived,static,False
+LostPart__Wheels & Alignment,0.0,derived,static,True
+LostPart__Tyres (General),0.0,derived,static,True
+LostPart__Other Components,0.0,derived,static,True
+LostPart__Rear Brake Pads,0.0,derived,static,True
+Red_Invoiced_Revenue_Pct,0.0,derived,static,True
+Red_Deferred_Revenue_Pct,0.0,derived,static,True
+LostPart__Horn,0.0,derived,static,False
+LostPart__Front Wiper Blades,0.0,derived,static,True
+New / Used_NEW,0.0,EDA-onehot,static,True
+New / Used_USED,0.0,EDA-onehot,static,True
+PMS Status_Non PMS,0.0,EDA-onehot,static,True
+PMS_Delay,0.0,derived,static,True
+PMS_Delay_Doc,0.0,derived,static,False
+wearablesBought,0.0,derived,static,True
+PMSRevenue,0.0,derived,static,True
+Franchise_INFINITI,0.0,EDA-onehot,static,True
+Franchise_NISSAN,0.0,EDA-onehot,static,True
+Franchise_RENAULT,0.0,EDA-onehot,static,True
+AMA or Non AMA_AMA Vehicle,0.0,EDA-onehot,static,True
+AMA or Non AMA_Non AMA Vehicle,0.0,EDA-onehot,static,True
+Service Contract Status_Active,0.0,EDA-onehot,static,True
+Warranty Status_Yes,0.0,EDA-onehot,static,True
+First Service Status_Not Done,0.0,EDA-onehot,static,True
+First Service Status_Done,0.0,EDA-onehot,static,True
+Vehicle Service Status_Lapsed,0.0,EDA-onehot,static,True
+Vehicle Service Status_InActive,0.0,EDA-onehot,static,True
+Vehicle Service Status_Active,0.0,EDA-onehot,static,True
+Gender_Other,0.0,EDA-onehot,static,True
+Gender_Male,0.0,EDA-onehot,static,True
+Gender_Female,0.0,EDA-onehot,static,True
+PMS Status_PMS only,0.0,EDA-onehot,static,False
+PMS Status_PMS and Additional Products,0.0,EDA-onehot,static,False
+PMS Status_PMS Partial,0.0,EDA-onehot,static,True
+Contract_PurchaseStatus_Final_Sold from Sales,0.0,EDA-onehot,static,True
+Service Contract Status_Expired,0.0,EDA-onehot,static,True
+Service Contract Status_No SC Purchased,0.0,EDA-onehot,static,True
+Nationality_Cluster_3,0.0,EDA-onehot,static,False
+Nationality_Cluster_2,0.0,EDA-onehot,static,False
+Nationality_Cluster_1,0.0,EDA-onehot,static,False
+LowMileageFreqUsers,0.0,derived,static,True
+last_appointment_status_NO_SHOW,0.0,derived,static,False
+Contract_PurchaseStatus_Final_No SC Purchased,0.0,EDA-onehot,static,True
+latest_complaint_category_unknown,0.0,derived,static,True
+Contract_PurchaseStatus_Final_Sold from Service,0.0,EDA-onehot,static,True
+Model_Cluster_1,0.0,EDA-onehot,static,False
+Nationality_Cluster_4,0.0,EDA-onehot,static,False
+Whatsapp Sessions,0.0,derived,static,True
+Vehicles Owned,0.0,derived,static,True
+AMA Auto App Sessions,0.0,derived,static,True
+Email Sessions,0.0,derived,static,True
+SMS Sessions,0.0,derived,static,True
+TargetFlag,0.0,derived,static,False

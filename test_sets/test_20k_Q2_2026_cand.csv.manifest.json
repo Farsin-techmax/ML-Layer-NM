@@ -1,0 +1,49 @@
+{
+  "artifact": "test_sets/test_20k_Q2_2026_cand.csv",
+  "artifact_record": {
+    "sha256": "875650140c14e6c2f8eab880f69324df9cb4e0d896742de8e7b1ea6a4f014221",
+    "size": 1304807,
+    "mtime": "2026-09-01 12:52:37"
+  },
+  "inputs": {
+    "data/EDA_Q2-2026.csv": {
+      "sha256": "7bbf739835cc62e0ada9f2cce393aade0ab09ec86ec52ab750ba273dac2c86da",
+      "size": 51991796,
+      "mtime": "2026-07-24 10:46:04"
+    },
+    "data/Service_History_Q2-2026.csv": {
+      "sha256": "8e304b89013a9a5e03a880c8fde446c3f799caa67f6b2e499f1c07e8bf20998a",
+      "size": 114359663,
+      "mtime": "2026-08-19 12:46:49"
+    },
+    "data/RFM_Q2-2026.csv": {
+      "sha256": "49f9f8473710d9579a72272e4922b539bea7aa3d0f05a27999f7b1f8059fd91c",
+      "size": 1421846,
+      "mtime": "2026-07-13 18:13:31"
+    },
+    "data/Appointments_Q2-2026.csv": {
+      "sha256": "db6080859afdb6023501e99b91da9f6cbf4ad39e8c2b5dc2d27c232555840b09",
+      "size": 48960306,
+      "mtime": "2026-07-13 18:20:05"
+    },
+    "data/VHC_Q2-2026.csv": {
+      "sha256": "21cc21a9d07234dc80243ac7a218d2eeffe006d3d7b3b384e0874ff04b4fde97",
+      "size": 31293846,
+      "mtime": "2026-07-13 18:20:53"
+    },
+    "data/Digital_Sessions_Q2-2026.csv": {
+      "sha256": "00c94ad9296fe04385f93805f3955fb5ff5dcd2219e554e60939f1ea60340fe2",
+      "size": 2583773,
+      "mtime": "2026-07-13 18:21:07"
+    },
+    "data/Service_Code_Desc.csv": {
+      "sha256": "cf2057a1098993c21e43b9ceda72b40132e0dc4edbf487256f359431fe93f619",
+      "size": 8300,
+      "mtime": "2026-07-07 11:14:29"
+    }
+  },
+  "command": "python prepare_test_set.py --milestone 20 --window-start 2026-04-01 --window-end 2026-06-30 --train-cutoff 2025-12-31 --label-mode candidates --grace-days 15",
+  "git_head": "3ce6384c787c4c291e7485f6dd424382336db035",
+  "env_pms": {},
+  "written_at": "2026-09-01 12:53:05"
+}

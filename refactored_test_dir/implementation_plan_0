@@ -1,0 +1,133 @@
+# Clean Pipeline: Remove All Leaky Features
+
+The core prediction task: **given a vehicle's history BEFORE its target 20k service, predict whether it will show up.** Every feature must represent information available *before* the target event.
+
+## Leakage Sources Found
+
+### 1. Service History Includes Target Milestone (CRITICAL)
+
+**File:** [pmstrainfeatureeng_refactored.py](file:///c:/Techmax/cwf/code/pmstrainfeatureeng_refactored.py#L286)  
+**Line 286:** `serv1 = serv1.query(f"Service_Num <= {last_service_code}")`
+
+This `<=` includes the 20k service itself. For positive vehicles who completed 20k, their 20k revenue, mileage, and date all flow into every downstream feature (aggregations, intervals, revenue stats). The model just learns "did the 20k already happen?" which is trivially true.
+
+**Fix:** Change `<=` to `<` so features are derived from services 10k and below only.
+
+**Cascading effect** — the following downstream functions in `features.py` also use `<=` on their own copies and need `<`:
+- `branch_visit_features` [line 406](file:///c:/Techmax/cwf/code/features.py#L406): `Service_Num <= @last_service_code`
+- `branch_diversity_features` [line 425](file:///c:/Techmax/cwf/code/features.py#L425): `Service_Num <= @last_service_code`
+- `vhcpreparation` [line 899](file:///c:/Techmax/cwf/code/features.py#L899): `` `Service Code` <= @last_service_code ``
+- `compute_late_appointment_metrics` [line 649](file:///c:/Techmax/cwf/code/features.py#L649): `Service_Num <= @svc` (when svc is passed)
+- `compute_last_appointment_status_with_constant_service_code` [line 687](file:///c:/Techmax/cwf/code/features.py#L687): `Service_Num <= @last_service_code`
+
+> [!IMPORTANT]
+> Functions that already use `<` (correct): `derive_pms_features1` (line 123), `derive_pms_mileage_features` (line 183), `derive_pms_service_intervals` (line 274), `derive_appointment_show_features` (line 629), `count_service_appointments_booked` (line 833). These are fine.
+
+### 2. `LowMileageFreqUsers` — Direct Target Leakage
+
+**File:** [pmstrainfeatureeng_refactored.py](file:///c:/Techmax/cwf/code/pmstrainfeatureeng_refactored.py#L669-L670)
+
+```python
+pmsnew["LowMileageFreqUsers"] = np.where(
+    ... & (pmsnew["TargetFlag"]==1), 1, 0)
+```
+
+The feature literally uses `TargetFlag` in its construction. It's always 0 for negatives.
+
+**Fix:** Delete these two lines entirely.
+
+### 3. `complaint_features` — Uses `<=` on Service_Num
+
+**File:** [features.py](file:///c:/Techmax/cwf/code/features.py#L858)
+
+```python
+merged = merged[merged["Service_Num"] <= merged["Last_PMS_Service"]]
+```
+
+`Last_PMS_Service` comes from `mastertrain['Service_Num']`, which for positives IS the target milestone (20). So complaints from the 20k service itself are included.
+
+**Fix:** Change `<=` to `<`.
+
+### 4. Non-PMS Events Cutoff — Already Safe ✅
+
+`get_non_pms_events` (line 1108-1119) finds the first date of the target milestone service and only keeps events `<= First_{k}k_Date`. This correctly cuts off at the target service date. **No change needed.**
+
+### 5. Revenue Features — Already Safe ✅
+
+`compute_service_features` (line 454-455) explicitly excludes the target milestone:
+```python
+serv = serv.query("Service_Num != @last_service_num")
+```
+**No change needed.**
+
+### 6. PMS Date/Interval Features — Already Safe ✅
+
+`derive_pms_features1` (line 123) and `derive_pms_service_intervals` (line 274) both use `Service_Num < @last_service_code`. **No change needed.**
+
+---
+
+## Proposed Changes
+
+### [pmstrainfeatureeng_refactored.py](file:///c:/Techmax/cwf/code/pmstrainfeatureeng_refactored.py)
+
+#### Line 286 — Service history filter
+```diff
+-serv1 = serv1.query(f"Service_Num <= {last_service_code}")
++serv1 = serv1.query(f"Service_Num < {last_service_code}")
+```
+
+#### Lines 669-670 — Delete `LowMileageFreqUsers`
+```diff
+-pmsnew["LowMileageFreqUsers"] = np.where(
+-    (pmsnew["Avg_Service_Interval_PMS"].between(0, 7)) & (pmsnew["Last Service Mileage"].between(0, (last_service_code-10)*1000)) & (pmsnew["TargetFlag"]==1),1,0)
+```
+
+---
+
+### [features.py](file:///c:/Techmax/cwf/code/features.py)
+
+#### Line 406 — `branch_visit_features`
+```diff
+-df = df.query("Service_Num <= @last_service_code")
++df = df.query("Service_Num < @last_service_code")
+```
+
+#### Line 425 — `branch_diversity_features`
+```diff
+-df = df.query("Service_Num <= @last_service_code")
++df = df.query("Service_Num < @last_service_code")
+```
+
+#### Line 649 — `compute_late_appointment_metrics`
+```diff
+-service_df = service_df.query("Service_Num > 1 and Service_Num <= @svc")
++service_df = service_df.query("Service_Num > 1 and Service_Num < @svc")
+```
+
+#### Line 687 — `compute_last_appointment_status_with_constant_service_code`
+```diff
+-service_df = service_df.query("Service_Num > 1 and Service_Num <= @last_service_code")
++service_df = service_df.query("Service_Num > 1 and Service_Num < @last_service_code")
+```
+
+#### Line 858 — `transform_complaint_features`
+```diff
+-merged = merged[merged["Service_Num"] <= merged["Last_PMS_Service"]]
++merged = merged[merged["Service_Num"] < merged["Last_PMS_Service"]]
+```
+
+#### Line 899 — `vhcpreparation`
+```diff
+-df = df.query("`Service Code` <= @last_service_code").copy()
++df = df.query("`Service Code` < @last_service_code").copy()
+```
+
+---
+
+## Verification Plan
+
+1. Re-run `pmstrainfeatureeng_refactored.py 2026 Q1 20k` — check class balance and shape
+2. Re-run `prepare_test_set.py --milestone 20` — check shape matches
+3. Re-run `train_nn_20k.py` — check ROC-AUC, Brier, and confusion matrix
+4. Verify `TargetFlag` values are exactly `{0, 1}` in the output CSV
+5. Verify no feature column name contains "LowMileageFreqUsers"

@@ -1,0 +1,12 @@
+import pandas as pd
+df = pd.read_csv('models/20k/training/training_features.csv')
+print(f'Shape: {df.shape}')
+print(f'Columns: {df.columns.tolist()}')
+print(f'\nTarget distribution:')
+print(df['TargetFlag'].value_counts())
+print(f'\nDtypes:')
+print(df.dtypes)
+print(f'\nDescribe:')
+print(df.describe())
+print(f'\nNull counts:')
+print(df.isnull().sum())
