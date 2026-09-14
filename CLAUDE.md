@@ -16,6 +16,12 @@ milestone (20k/30k/…/100k), predict whether a vehicle turns up for that schedu
 One PyTorch binary classifier per milestone. Two stages: feature-engineer a labelled matrix,
 then train/eval per milestone.
 
+> **Read this before the `ever` section below.** Every model in `production_models/` (all nine,
+> 20k–100k) was built with **`--label-mode candidates`**, not `ever`. The "ever completed"
+> convention documented next is the POC/baseline lineage and still the *code* default
+> (`--label-mode ever`, `PMS_LABEL_MODE=ever`), which is why the older Gotchas are written against
+> it — but it is **not what ships**. See `### Production labelling: --label-mode candidates`.
+
 ### Labelling: "ever completed" — the POC convention, decided 2026-08-12
 `TargetFlag == 1` = the vehicle has completed the target milestone **at any point** up to the latest
 data. `TargetFlag == 0` = it was expected for the milestone and is **still pending past its expected
@@ -50,6 +56,37 @@ Older docs (`refactored_test_dir/old_vs_refactored_comparison.md`, `later/refact
 claim the refactor *already* moved the target to "showed up in the exact quarter" and that this cost
 15–20 accuracy points — FALSE as a description of the code; do not reason from it.
 
+### Production labelling: `--label-mode candidates` (cohort-v3) — what every promoted model uses
+`ever` and `window` are the two modes the Gotchas below argue about; **`candidates` is the one that
+won and shipped.** All nine `production_models/{m}k/` were trained with:
+
+```
+python pmstrainfeatureeng_refactored.py 2026 Q1 <M> --label-mode candidates --grace-days 15
+```
+
+→ `refactored_test_dir/final_processed_{M}k_candidates.csv`, and matched test cohorts from
+`prepare_test_set.py --label-mode candidates --grace-days 15` → `test_sets/test_{M}k_Q{1,2}_2026_cand.csv`.
+`retrain.py` picks the matrix up via `$env:PMS_LABEL_MODE='candidates'`.
+
+How it differs from the other modes (`build_candidates_cohort()` / `run_candidates_mode()`):
+- **Cohort membership** = vehicles whose *projected* due date lands in the quarter, where the due
+  date is `earliest(6-months-per-10k schedule, cumulative burn-rate projection)` —
+  `due_date.earliest_date()` / `burn_rate_date()`. Not EDA's back-filled `Expected{svc}Date`, which
+  is the fabricated-date problem documented in Gotchas.
+- **Requires a genuine EDA `Invoice date`** (the invoice guard; `--strict-invoice-guard` tightens it
+  to per-VIN).
+- **Spans many due-quarters** — `--quarters-from` / `--quarters-to` (default `2016Q1`..`2025Q4`),
+  so a matrix is ~57k–75k rows over ~36 quarterly cohorts, not one cohort.
+- **Early completers are POSITIVES**, flagged `EarlyCompleter`, rather than dropped. Deliberate —
+  do not "fix" it in training. `stale_completion_filter.py` removes them from *forward* lists only.
+- `--grace-days` is **forward-only** here: any early completion counts, a late one counts only
+  within the grace band. The rollout standard is **15**, not the CLI default of 45.
+- The positive-rate tuning `while` loop does not apply; base rates land ~20–25%.
+
+Other modes still reachable: `ever` (default), `window`, `all`, `history`. `history` is the
+direct ancestor of `candidates` — same per-quarter cohort construction, but with the plain
+schedule due date and no invoice guard.
+
 ## Environment & running
 - No package/test/lint/build config. Flat dir of standalone scripts, `python <script>.py`.
   All data paths (`data/`, `models/`, `traindataq1_q2/`) are hardcoded **relative to cwd** —
@@ -68,8 +105,29 @@ Both share `features.py` (~60 pure feature-derivation fns; `from features import
 `add_milestone_flags()`, `derive_inference_features()`, `build_inference_matrix()`,
 `load_artifacts()`, `predict_proba()`, `resolve_path()`, plus `LEAK_COLS` / `DERIVED_FEATURES` /
 `HAS_X_EXCLUDE` / `DROP_RFM`. Edit the policy there, not in the three callers.
+`due_date.py` owns cohort dating: `first_srv_date()`, `burn_rate_date()`, `earliest_date()`.
 Data flow: `data/*.csv|.xlsx` (EDA master + Service History + RFM / Appointments / VHC / Digital
 sessions) → merged feature CSVs → artifacts under `models/`.
+
+### Two silent-corruption traps — always use the shared parsers
+Both produced wrong numbers that shipped into docs before being caught. Neither raises.
+
+- **Dates: `date_utils.parse_dates()`, never bare `pd.to_datetime`.** The raw files are *mixed
+  convention* — EDA / Service History / VHC are **day-first** (`12/11/2024` = 12 Nov), Appointments
+  and anything round-tripped through `to_csv` are **ISO**. Parsing day-first data without
+  `dayfirst=True` silently swaps day and month whenever the day is ≤12; passing `dayfirst=True` to
+  ISO-with-time breaks it the other way (on pandas 3.0.3,
+  `to_datetime('2026-08-09 00:00:00', format='mixed', dayfirst=True)` → 2026-09-08). `parse_dates()`
+  sniffs per column, which is the only thing that actually knows. This bug is what produced the
+  phantom "history runs to 2026-12-06" claim — it really ends **2026-06-29**.
+- **Service number: `features.resolve_service_num()`, never `int()` on `Description`.** The same
+  20k service is spelled `'11-20'` (July extract), `'Nov-20'` (Excel date damage, most of the main
+  history) and `'11_20'` (a manual repair, Q1 2026 only, 1,967 rows). PEP 515 makes `int('11_20')`
+  return **1120**, so Q1 2026 — the exact window every test set is built on — had 481 of 951
+  vehicles mislabelled "did not turn up". `Service_Code` is now the source of truth and
+  `Description` only the fallback. **The `Service_Num == 0` ⇒ non-PMS convention is load-bearing**
+  (12 sites in `features.py` test it); a naive "just use `Service_Code`" change empties every
+  non-PMS feature — `test_service_num.py` check B exists to catch exactly that.
 
 ### Current pipeline (features.py-based)
 - **Feature-eng**: `python pmstrainfeatureeng_refactored.py <year> <quarter> <milestone> [--train-cutoff YYYY-MM-DD]`.
@@ -157,13 +215,79 @@ When the user says *legacy*, they mean **`/legacy`** — not the legacy artifact
   casually — its patches are likely already applied.
 
 ## Tests / diagnostics
-No pytest/unittest, no test suite. Verification = run the eval scripts above and compare metrics.
+
+### Regression tests — run these before training anything (gate G2)
+No pytest. Two plain scripts, run from repo root, **exit 0 = pass**, each prints PASS/FAIL with the
+observed value per check:
+
+```
+python test_dayfirst.py      # expect "41/41 passed"  -- every date column in every data file
+python test_service_num.py   # expect "31/31 passed"  -- Service_Num across all three spellings
+```
+
+Each guards one of the two silent-corruption traps above, in four layers: unit (hand-written values
+with a known answer) → file boundary (every real data file, every date column) → code path (the
+actual call sites) → invariant (the headline fact the bug falsified — history ends 2026-06-29;
+`Service_Num == 0` still means non-PMS; 20k Q1 positive rate back near ~82%). **If either fails,
+stop and report — do not train**; that is Step 3 of `MILESTONE_ROLLOUT_RUNBOOK.md`.
+They read the full data files, so they take a couple of minutes.
+
+### Leak screen (gate G6)
+```
+python leak_screen.py <M> --train refactored_test_dir/final_processed_<M>k_candidates.csv \
+  --test test_sets/test_<M>k_Q1_2026_cand.csv \
+  --model-dir models/<M>k_cand_v3 --features models/selected_features_<M>k_cand_v3.json \
+  --out models/<M>k_cand_v3/leak_screen_Q1.csv
+```
+Two read-only diagnostics: per-feature train-vs-test single-feature AUC (**AUC is RAW, not folded
+above 0.5 — below 0.5 means inverted**), and grouped permutation importance by feature family.
+Gate: `test - train >= 0.20` with `test >= 0.65` → STOP, `>= 0.10` → flag. Omit `--model-dir`/
+`--features` for the single-feature screen alone. **Read the G6 BLIND SPOT gotcha before acting on
+any STOP** — coverage drift mimics the signature. Results land at repo root as
+`leak_screen_{m}k_q1*.csv`.
+
+### Provenance
+`write_manifest.py <artifact> [--inputs ...] [--cmd "..."]` writes `<artifact>.manifest.json` with
+SHA256 of the artifact and every input, git HEAD, the command line, and all `PMS_*` env vars.
+Exists because the 2026-08-19 label regression was a **silently swapped data file**, which git
+history could not catch. `provenance_freeze.json` is the 2026-09-08 hash freeze of the seven
+`data/*.csv` inputs; gate G1 checks the current files against it. Manifest every matrix, test set
+and `best_model.pt` — the runbook has the exact invocations.
+
+### Explainability
+`pms_explain.py` / `explain_server.py` — SHAP over the **promoted** `production_models/{m}k/`
+artifacts (not `models/` staging). SHAP values are in **log-odds** (`BinaryClassifier` emits
+logits): `base_value + sum(shap) == logit` is asserted at build time, so a mismatch is a bug. The
+background distribution is a sample of the same cohort, so contributions read as "relative to the
+average vehicle due this quarter" — change the cohort and the numbers legitimately move.
+```
+python pms_explain.py --milestone 20 --quarter Q1 --vin <VIN>
+python pms_explain.py --milestone 20 --quarter Q1 --model-summary --top 25
+python explain_server.py            # http://127.0.0.1:8000, stdlib http.server, no Flask
+```
+Binds localhost only — the cohorts hold customer VINs. First request per (milestone, quarter) is
+slow, then cached to `cache/explain/` keyed on model+cohort hash.
+
+### Cohort-vs-reality validation
+`july_candidates_overlap.py` / `july_overlap_diagnose.py` — score-free check of the candidate
+*list* against a July 2026 service log that was **not** in the base history (which stops
+2026-06-29). The first reports recall/precision of the cohort per milestone, raw and
+"open" (minus already-completed); the second explains the misses, splitting **reachability** (the
+`Last Service - PMS == '-'` and invoice-date filters cap recall before any date is computed) from
+**timing** (due-date bias/noise, and what a wider window would buy). Both run with no arguments.
+
+### Other
+Verification otherwise = run the eval scripts above and compare metrics.
 `eval_test_metrics.py` is the quickest full check (all 9 milestones, Q1+Q2, ~2 min). Until
 2026-08-12 it printed `No results.` and exited silently because it looked for `testdataq1_q2/` at
 the repo root; if it ever prints that again, the test files moved.
 Several `*test*`/analysis scripts named in older docs (`test_pms_mil.py`,
 `function_refactor_test.py`, `analyze_30k_drop.py`, `predict_milestone.py`, `prepare_data_feed.py`)
 have been deleted — check a file exists before referencing it.
+
+Expected cohort reconciliation test cases sit in `test/` (`eval_expected_cohort.py`,
+`eval_q1_expected_cohort.py`, `hindcast_actual_turnups.py`, `convert_and_eval_milestones.ps1`) to check
+reconciliation for the present codebase against Q1 and Q2 sets.
 
 ## Gotchas
 - **`Service_Num` is an exact label leak**: `Service_Num == milestone` ⟺ `TargetFlag == 1`, zero
@@ -384,6 +508,70 @@ have been deleted — check a file exists before referencing it.
   It breaks for vehicles already past the milestone mileage: `Miles_Remaining` goes negative,
   `Days_Remaining` is clipped to NaN then `fillna(0)`, so `Projected_Date` collapses onto the last
   service date. Leave the flag off.
+- **COMPANY RULE: one VIN can hold several `Vehicle_Key`s — on resale the key's trailing sequence
+  is bumped and EDA carries a row per key. Always anchor on the EARLIEST evidence across all of
+  them. FIXED 2026-09-09** (`due_date.first_srv_date()`), surfaced while auditing the **30k Q3
+  2026** candidate cohort.
+
+  When a vehicle changes owner the group re-issues the key with the sequence incremented
+  (`03-557292-0` → `03-557292-1`) — a **company-wide identifier convention, not a data error**.
+  EDA keeps both rows, and each carries its own `First Service Date`, which for the new key is the
+  *new owner's* first visit, not the vehicle's. `5N1DR3MR9RC248028`:
+
+  **A BARE trailing dash (`03-90215-`, no digit) = sold by an EXTERNAL dealer but serviced with
+  our client.** 70,214 of 130,759 EDA rows (53.70%); 69,700 VINs carry only bare keys. Nothing
+  special about them — **do not prioritise or special-case them**. They are the plain majority
+  case. Structurally the key always matches `<pre>-<base>-<seq>` (130,759/130,759 conform);
+  `seq` runs `<empty>` 53.70%, `0` 41.8%, `1` 4.2%, `2` 0.3%, `3` 32 rows, `4` 2 rows. A bare
+  `seq` and an explicit `0` NEVER share a base (0 cases), and where a bare key sits alongside a
+  numbered one on the same base (443 groups) the bare row is always the older record
+  (260/260 on both First and Last Service Date) — so sorting `''` as 0 orders them correctly.
+
+  | Vehicle_Key | Invoice date | First Service Date | old anchor | → 30k due |
+  |---|---|---|---|---|
+  | `03-557292-1` | 2026-02-07 | 2026-02-10 | 2026-02-07 | 2027-08-07 |
+  | `03-557292-0` | — | 2025-04-19 | 2025-04-19 | 2026-10-19 |
+
+  Its real service history is one continuous vehicle: `2024-07-03 @1,073km code 1` →
+  `2025-04-19 @10,887 code 10` → `2025-10-08 @14,742 code 20` → `2026-02-10 @14,854 code 30`. True
+  30k due = 2024-07-03 + 18mo = **2026-01-03**; it actually turned up **2026-02-10**. The old rule
+  missed by 8 and 20 months and put the VIN in the cohort **twice, in two different quarters**.
+
+  **Picking the earlier EDA row is NOT enough** — the older key's `First Service Date` (2025-04-19)
+  is that vehicle's *code-10* visit, not its first service (2024-07-03). Raw service history has to
+  be read directly. But service history alone is also wrong: for **21.8%** of VINs a genuine
+  `Invoice date` legitimately precedes the first service and is the better zero-point. So the rule
+  is the min over **all** evidence:
+
+  ```
+  FirstSrvDate = min( every key's Invoice date,
+                      every key's First Service Date,
+                      min(Service_Date) in raw service history )
+  ```
+
+  Scale: **1,102 VINs** in `EDA_Q2-2026` have >1 row (**329** survive the `Last Service - PMS != '-'`
+  filter). Months from due date to actual turn-up, completers, schedule model:
+
+  | | 20k | 30k | 40k | 60k |
+  |---|---|---|---|---|
+  | median old → new | -4.2 → **-3.4** | -6.5 → **-5.8** | -9.3 → **-8.4** | -15.1 → **-14.1** |
+  | p10 old → new | -10.3 → **-8.6** | -14.1 → **-12.9** | -22.8 → **-19.4** | -30.7 → **-29.2** |
+
+  Two "which row wins" questions, answered **differently** in `_apply_first_srv_date()`
+  ([pmstrainfeatureeng_refactored.py](pmstrainfeatureeng_refactored.py)): the **anchor** takes the
+  earliest date across keys, the **feature row** takes the *newest* key (`sort_values("Last Service
+  Date").drop_duplicates(keep="last")`) because after a resale only the new key carries live
+  `Last Service - PMS` / `Last Service Mileage` — on the VIN above the new key reads 30k while the
+  old still reads a stale 20k. The previous `.drop_duplicates(subset="VIN")` kept whichever row came
+  first in the CSV, which is neither. `--strict-invoice-guard` is now per-VIN too: a VIN is kept when
+  **any** of its keys has a sale date.
+  `prepare_test_set.py` never deduped at all, so test cohorts carried duplicate VIN rows (3 in 30k
+  Q3, 6 in 20k Q1); it now calls the same helper. **Only the `candidates` path is converted** —
+  `create_test_cohort()`'s `ever`/`history` branches still use the old per-row rule, so every
+  published `ever`-mode metric stays reproducible.
+  Effect on 30k Q3 2026 (`--grace-days 15`): 2,216 rows → **2,133**, duplicates 3 → **0**,
+  519 dropped / 439 added / 1,694 retained (**23% churn**), positives 728 (32.9%) → **482 (22.6%)**.
+  Any cohort built before 2026-09-09 must be rebuilt before its metrics are compared to a new one.
 - **`--date-model calibrated` — built, measured, and it did NOT win** (2026-08-16).
   `features.expected_milestone_months()` is shared by both builders; `MILESTONE_MONTHS_CALIBRATED`
   holds medians measured over 15k-48k vehicles per milestone. The schedule assumes 6 months per 10k;
@@ -553,12 +741,288 @@ Verified before switching: `Service_History_Q2-2026.csv` is byte-identical to th
 `Service History Q1 - 2026.csv`, and the two EDA snapshots share all 100 columns, all 129,636 VINs
 and an **identical `Last Service - PMS`** — only 7 feature columns differ (`Service Frequency` 86.9%
 of rows, `Vehicle Lifetime in Years` 43.8%, `Target Revenue` 19.2%, the rest &lt;0.5%). So the switch
-refreshes feature values without moving a single label. Note `Service_History_Q2-2026.csv` actually
-runs to **2026-12-06**, not Q2 — the name understates its coverage.
+refreshes feature values without moving a single label. **`Service_History_Q2-2026.csv` runs to
+2026-06-29 — the name is accurate** (only data up to June was loaded). Every date column in both
+files maxes there: `Last Service Date`, `Last Service Date - PMS`, `Invoice date`,
+`First Service Date`. An earlier revision of this file claimed it "actually runs to 2026-12-06, not
+Q2 — the name understates its coverage"; that is **FALSE** (checked 2026-09-09 under both day-first
+and month-first parsing) and the "latest 2026-12-06" figure in the labelling section above inherits
+the same error. Consequence: **Q1 2026 is the only fully-observed outcome window**, Q2's
+`--grace-days 15` band runs 16 days past the data, and Q3/Q4 have no outcome coverage at all —
+which is by design, see the note below.
+
+### Q3/Q4 cohorts are FORWARD PROJECTIONS — do not score them
+A cohort whose window opens after the data ends is a **candidate list**: "these vehicles are
+projected due for the milestone next quarter." That is the deliverable, not a test set. The
+builders still stamp a `TargetFlag` on them, and on a future window that column can only ever mean
+"already completed before the window opened" — 100% of positives are `EarlyCompleter` by
+construction. Measured 2026-09-09 on the 30k candidates cohorts:
+
+| cohort | rows | pos | early | genuine in-window |
+|---|---|---|---|---|
+| Q1 2026 | 1,998 | 1,291 (64.6%) | 43.7% | 727 |
+| Q2 2026 | 2,403 | 1,526 (63.5%) | 55.0% | 686 |
+| Q3 2026 | 2,133 | 482 (22.6%) | **100%** | **0** |
+| Q4 2026 | 1,845 | 311 (16.9%) | **100%** | **0** |
+
+Never quote a metric off a Q3/Q4 file — read `prob_turnup` from it instead. The 43.7%/55.0% on the
+observed quarters is the normal rate; a 100% reading is the tell that the window outran the data.
+
+## Production rollout — state as of 2026-09-10
+
+### `production_models/{m}k/` is the promotion target
+**The rollout is complete — all nine milestones (20k–100k) are promoted**, every one built
+`--label-mode candidates --grace-days 15` at git HEAD `60b6372`, on the `provenance_freeze.json`
+data. `salman/expected_cohort_{m}k_Q{3,4}_2026.csv` exists for all nine. Each dir holds exactly
+`model.pt`,
+`scaler.joblib`, `imputer.joblib`, `selected_features.json`, `threshold.json`, `metadata.json`
+(+ `model.pt.manifest.json`). `metadata.json` carries full provenance, validated Q1/Q2 metrics with
+confusion matrices, the 3-seed comparison, all eight gate results and known caveats — **read the
+target milestone's `metadata.json` before touching it**, the caveats are milestone-specific.
+
+| milestone | seed | Q1 AUC | Q2 AUC | features | gates |
+|---|---|---|---|---|---|
+| 20k | 123 | 0.9290 | 0.9093 | 160 | seed 42 excluded (G7 spread 0.077) |
+| 30k | 42 | 0.9446 | 0.9595 | 191 | all clean |
+| 40k | 7 | 0.9109 | 0.9166 | 195 | **G6 STOP overridden — see below** |
+| 50k | 7 | 0.9442 | 0.9456 | 200 | all clean |
+| 60k | 42 | 0.9289 | 0.9309 | 202 | 2 G6 flags (coverage drift, see below) |
+| 70k | 42 | 0.9322 | 0.9383 | 204 | 3 G6 flags; **F1 peaks at 0.65, ships 0.5** |
+| 80k | 7 | 0.9453 | 0.9291 | 209 | **G6 STOP overridden — false positive, measured** |
+| 90k | 7 | 0.9692 | 0.9407 | 211 | G6 STOP overridden (coverage drift); G7 tightest in rollout |
+| 100k | 123 | 0.9638 | 0.9463 | 212 | G6 STOP overridden; **weakest precision/overlap — see below** |
+
+**90k/100k caveats, from their `metadata.json`:** threshold 0.5 ships **unswept** for both (the
+sweep that established 0.5 covered 20k/30k only, and 70k already peaked at 0.65), and neither has a
+VIN-level audit. 100k is the weakest promoted model at the operating point — precision 0.59/0.54
+against base rates 20.2%/17.3%, mean Jaccard 0.552 vs 20k's 0.847 — so its *ranking* is excellent
+(AUC 0.96/0.95) but the 0.5 cut point is badly placed. Sweep before either list drives customer
+contact. 90k's Q1 recall of 0.9912 (3 FN of 340) reproduces on independent re-score and is G6-clean
+after era-matching, but confirm it against real Q3 2026 outcomes.
+
+Feature counts drift above the documented `[100,200]` G3 band from 60k up (202/204/209/211/212).
+Treated as
+passing — that band guards against the sub-80 collapse mode, not as a ceiling — but recorded in each
+`metadata.json` rather than rounded away.
+**Seed selection is a two-factor rule** (best AUC across *both* quarters + best Jaccard overlap on
+*both*). When the two disagree, compare each margin against the measured G7 seed spread: on 80k,
+seed 42 led AUC by 0.0034/0.0022 while the seed spread was 0.0034/0.0076 — i.e. inside noise — so
+seed 7's 0.038/0.025 overlap lead (114 fewer false positives) decided it.
+
+- **NEVER let a `best_model.pt` exist in a `production_models/{m}k/` dir.** `load_artifacts()`
+  prefers `best_model.pt` over `model.pt` whenever both are present, so a leftover copy silently
+  scores a **different, superseded model with no error**. This actually happened on 30k
+  (2026-09-09): a stale round-1 `best_model.pt` shadowed the freshly promoted `model.pt` and the
+  Q3/Q4 lists were scored with the wrong weights. Caught only because an audit subagent's numbers
+  didn't reconcile. After any promotion, `ls production_models/{m}k/` and confirm.
+- `score_milestone.py` and `pms_model.py:load_artifacts()` accept **either** filename
+  (`best_model.pt` for `models/` staging, falling back to `model.pt` for production) since
+  2026-09-09 — so `--model-dir production_models/{m}k` works directly, no wrapper script.
+- Deliverables for the business live in `salman/` as
+  `expected_cohort_{m}k_Q{3,4}_2026.csv`, 8 columns: `Predicted Quarter, Predicted Year,
+  Predicted Service Mileage, Predicted Service_Code, NextServiceDate, VIN, predicted_prob,
+  predicted_flag`. `NextServiceDate` must be plain `YYYY-MM-DD` — the raw `Next{M}K_Due` column
+  carries full timestamps (`2026-12-19 05:35:59.306525404`), so always
+  `pd.to_datetime(..., format='mixed').dt.strftime('%Y-%m-%d')`.
+- When reshaping a scored file, **use the scored output's own `Next{M}K_Due` column**. Merging it
+  against the test set's copy of the same column produces a silent `_x`/`_y` suffix collision and a
+  `KeyError` (or worse, a wrong column). Hit twice on 2026-09-09.
+
+### `MILESTONE_ROLLOUT_RUNBOOK.md` — the step-by-step for a new milestone
+Exact commands for matrix → test sets → 3 seeds → gate battery → promotion → Q3/Q4 → delivery, with
+three checkpoints where a human decides (seed selection, standalone verification, filter results).
+Written so the milestone owner can run it without burning agent context. Keep it in sync with any
+pipeline change.
+
+### Forward quarters use a LATER feature cutoff than training — `--train-cutoff 2026-06-30`
+Standard as of 2026-09-09. Training and the Q1/Q2 test sets stay at `2025-12-31`; **Q3/Q4 test sets
+use `2026-06-30`** (the latest real service data). Rationale: training computes each cohort's
+features just before *its own* due window, so a 2025-12-31 cutoff on a Q3/Q4 window is a 6–12 month
+train/test mismatch, not a safety margin. Cohort membership is unchanged either way — only feature
+values move. Measured on 30k Q4: `has_20` went **8.7% → 47.2%**, `PMS_Count_Prior` 1.01 → 2.09, and
+flagged positives **103 → 355**; 30k Q3 went 239 → 728.
+**Q1/Q2 must NEVER move to a later cutoff** — their outcomes fall inside 2026 H1, so that is a real
+leak. Q4 stays ~3 months stale by data limit (history ends 2026-06-29) and will understate until
+newer history lands.
+
+### `stale_completion_filter.py` — forward lists only, never training
+`python stale_completion_filter.py <milestone> <window_start> <expected_cohort.csv>` drops any VIN
+whose raw history already shows a `Service_Num == milestone` record dated **before the window
+opens**, overwrites in place, and writes a sibling `_removed_stale_completions.csv` audit trail.
+Applies **only** to the forward Q3/Q4 deliverables. Training/eval keep `EarlyCompleter` rows as
+positives — that is the deliberate candidates-mode design, do not "fix" it there.
+It removes 12–26% of rows but **40–54% of the flagged positives**, because the model was trained to
+score already-completed vehicles highly. That is expected, not a bug.
+
+### Threshold 0.5 is measured-optimal — do not lower it
+Swept 0.50→0.20 on the labelled not-early population (2026-09-09). **F1 peaks at exactly 0.50** for
+both 20k (0.881) and 30k (0.885). Dropping to 0.20 moves the flagged share 65%→76% while precision
+falls 0.85→0.76. Lowering the threshold trades real precision for marginal recall; the volume
+problem is the cohort, not the cut point.
+
+### The cohort under-catches real demand — the known open limitation
+~3,831 vehicles completed 20k in 2026 H1 (~1,900/quarter), but the 20k Q3 list holds only 1,309
+candidates post-filter. **Even flagging every candidate cannot reach real demand** — a vehicle only
+enters the list if its *projected* due date lands inside the quarter, and that projection has real
+error. The unexplored fix is widening the due-date window (±30–45 days) — Phase 4.2 of the original
+plan, scoped but never run. Threshold tuning cannot substitute for it.
+
+### 40k's G6 STOP was overridden on evidence — the one non-clean promotion
+`LastNonPMSMileage` scored train AUC **0.4173** vs test **0.6640** (gap 0.2467) — the documented
+leak signature, sign-flipped between train and test. Two tests were run before overriding:
+1. **Ablation** (`PMS_DROP="LastNonPMSMileage,Last Service Mileage"` — **both**, because
+   `derive_inference_features()` rebuilds `Last Service Mileage` *from* `LastNonPMSMileage`, so
+   dropping one alone leaves the same signal under the other name): leak screen went fully clean,
+   but AUC fell to 0.8770/0.8719 — deltas **-0.034 / -0.045**, both over the 0.03 gate.
+2. **Head-to-head on real outcomes**: where the two models disagree on Q1/Q2, the with-mileage
+   model's unique flags were right **31.9%** (Q1) / **72.0%** (Q2) vs the ablated model's 6.4% /
+   22.7%. Net correct calls **+114** vs **-53**.
+
+Conclusion: the feature carries genuine signal; removing it is strictly worse. **But the
+instability is real** — marginal precision swung 31.9%→72.0% between quarters, and in Q1 that was
+*below* the 54.7% base rate. On the forward lists the two models overlap only 0.67 (Q3) / 0.44 (Q4)
+Jaccard, disagreement correlating **-0.77** with `LastNonPMSMileage`. **Re-validate 40k as soon as
+Q3 2026 outcomes land.** Same feature is an informational flag at 50k (gap 0.1738) and clean at 30k.
+
+### G6 has a BLIND SPOT: feature-availability drift reads as a leak (measured 2026-09-10 on 80k)
+`leak_screen.py` compares single-feature train-vs-test AUC. It does **not** account for a feature
+whose data collection *began part-way through* the 2016-2025 training span — such a feature is a
+structural zero on old cohorts, which dilutes its train AUC and manufactures a large gap against a
+fully-covered 2026 test cohort. **That is not leakage.**
+
+Caught on 80k, where `total_appointments_showed_up` triggered a hard STOP (train 0.5560 / test
+0.7708, gap **0.2148**). Nonzero rate by training cohort year:
+
+| 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | test Q1/Q2 |
+|---|---|---|---|---|---|---|---|---|
+| 0.0% | 0.0% | 0.1% | 21.8% | 74.4% | 82.8% | 91.1% | 96.6% | **96.7% / 100%** |
+
+The appointments system did not exist before ~2021, so **63% of training rows carry a zero meaning
+"not tracked yet"**, not "customer booked nothing". Re-measured era-matched (training cohorts 2022+
+only):
+
+| feature | raw gap | era-matched gap |
+|---|---|---|
+| `total_appointments_showed_up` | +0.2148 (STOP) | **+0.0413** |
+| `no_of_service_appointments_booked` | +0.1866 (FLAG) | **+0.0127** |
+
+Both fall below the 0.10 FLAG line, let alone the 0.20 STOP line.
+
+**How to tell a real leak from this artifact:** a real leak *flips sign* — 40k's
+`LastNonPMSMileage` reads train AUC **0.4173**, i.e. below 0.5, pointing the opposite way on train
+vs test. Coverage drift does not flip sign (80k's reads 0.5560, above 0.5); it only weakens.
+**Before treating any future G6 STOP as real, check the feature's nonzero rate by cohort year and
+re-measure on the era-matched subset.**
+
+This also retroactively explains the **appointment-feature flags at 60k (gap 0.1263) and 70k (0.1611,
+0.1338)** — same two columns, same artifact. So the apparent "G6 flags rise with milestone"
+(30k 0 → 40k 1 → 50k 1 → 60k 2 → 70k 3 → 80k 10) is **partly an artifact of the screen**, not
+proof of degrading models. Recommended fix: have `leak_screen.py` print coverage-by-year next to
+each AUC gap.
+
+### The 10k-anchored due-date leg — MEASURED AND REJECTED FOR NOW (2026-09-10)
+Business rule proposed: a customer who did their 10k six months ago is due for their 20k, so add
+`10k_date + 6 months` as a third leg to `earliest(schedule, burn_rate)`. Measured end-to-end
+against the **3,831 vehicles that actually completed their 20k in H1 2026**. Do not re-litigate
+without reading all four findings.
+
+**1. The 6-month step is wrong; the real interval is 4.3 months.** Median 10k→20k gap is **132 days**
+over 44,528 vehicles with both records (p25 87d, p75 184d). A `10k + 6mo` rule is systematically
+**+45 days late**. Tuned offsets, same-quarter hit rate: 4.5mo **46.0%**, 5.0mo 44.6%, 6.0mo 40.9%.
+
+**2. A pure time-from-10k rule LOSES to the current rule** — because production already blends two
+signals, one of which (burn rate) adapts to how hard each car is driven:
+
+| | median abs err | within ±45d | same quarter |
+|---|---|---|---|
+| current `earliest(sched, burn)` | **42d** | **52.4%** | 45.4% |
+| `10k + 4.5mo` alone | 48d | 46.0% | 46.0% |
+| `10k + 6.0mo` alone | 57d | 42.7% | 40.9% |
+
+**3. Adding it as a THIRD leg improves same-quarter accuracy but churns ~45% of the cohort.**
+`earliest(sched, burn, 10k+4.5mo)`: same-quarter **45.4% → 48.6%**, |err| 42d → 44d. But on the
+labelled quarters:
+
+| | current | proposed | overlap |
+|---|---|---|---|
+| Q1 2026 | 2,239 rows / 73.9% pos | 2,020 / 71.6% | 661 dropped, 442 added, **Jaccard 0.589** |
+| Q2 2026 | 1,945 rows / 67.5% pos | 1,865 / 65.9% | 616 dropped, 536 added, **Jaccard 0.536** |
+
+Volume by quarter: Q1 −219, Q2 −80, Q3 **+235**, Q4 −153 — the leg mostly *moves* vehicles between
+quarters rather than adding them, and **shrinks Q1/Q2**.
+
+**4. REJECTED for now, on three grounds:** (a) it makes the lists smaller, which is the opposite of
+the volume goal; (b) at ~45% churn the new AUC is not comparable to the published 0.9290/0.9093, so
+a drop could not be attributed to model vs population; (c) **the +3.2pp accuracy gain is measured on
+completers only** — vehicles that actually turned up — so it shows timing accuracy for known
+completers, NOT that the rule better identifies who will complete. That is survivorship bias and it
+was not controlled for.
+**Revisit at the next full rebuild** (when newer data forces regeneration and the churn cost is
+already being paid), and generalise as `(M-10) completion + 4.5 months` rather than hardcoding 20k.
+
+### Related, same investigation: what does NOT explain 20k's low volume
+- **Missing 10k records are already handled.** 22,429 eligible vehicles have no 10k record; the
+  schedule leg covers them (141 land in Q3, 125 in Q4). A missing 10k only kills the *burn-rate*
+  leg and `earliest()` falls back automatically. No rule change needed.
+- **Relaxing `Last Service - PMS == '-'` is not worth it.** That filter drops 43,949 of 130,759 EDA
+  rows (34%); 8,665 of them have both a real Invoice date and service-history presence, and 551
+  would land in Q3/Q4. But **97.7% of real 20k completers had a prior 1k or 10k on record — only
+  2.3% (89 vehicles) came with no prior PMS at all.** Adding never-PMS vehicles chases a ~2% pattern.
+- **The genuine cause is data truncation, not logic.** 20k is due ~12 months after first service, so
+  its Q3/Q4 pipeline needs vehicles first serviced in late-2025/2026 — exactly what the
+  2026-06-29 extract truncates. Projected due dates collapse forward (2,247 Q1 → 1,797 Q3 → 1,092 Q4
+  → 429 2027Q1) where 30k's decline gently. Eligible pools are near-identical (20k 11,519 vs 30k
+  11,023), so it is **not** a pool shortage. Only a newer extract fixes this.
+- **The overdue list is the lever that worked** — see below.
+
+### Overdue lists: `salman/overdue_{m}k_Q{3,4}_2026.csv` (2026-09-10, 20k only so far)
+Vehicles that completed the preceding milestone, came due, never showed, and are still
+`Active`/`Lapsed`. Built by running `prepare_test_set.py` over a trailing 12-month window
+(`--window-start 2025-07-01 --window-end 2026-06-30 --train-cutoff 2026-06-30`) and keeping
+`TargetFlag == 0`. Funnel on 20k: 1,513 came due and never showed → 976 had actually done their 10k
+→ **898** still Active/Lapsed (700 Active, 198 Lapsed; 841 seen in the last 12 months).
+Split Q3 (≤6mo overdue, 656 rows) / Q4 (6-12mo, 242 rows), sorted by probability, with three extra
+columns (`days_overdue`, `service_status`, `last_service_date`). **456 flagged — +35% on top of the
+1,309-row Q3 forecast list, with no rebuild and no invalidated metrics.**
+**Caveat: these probabilities RANK, they do not calibrate.** Features are computed at 2026-06-30,
+up to a year after the vehicle's due date, which is out-of-distribution versus training (where
+features sit just before the due window). Use the ordering for call priority; do not compare these
+probabilities against the Q3/Q4 forecast numbers. The list itself is a record of fact and does not
+depend on the model.
+Note `Vehicle Service Status` is **RFM-derived business logic, not visit recency** — do not
+substitute a "seen recently" proxy for it.
+
+### Burn-rate due date is CUMULATIVE and pooled (2026-09-09)
+`due_date.burn_rate_date()` anchors on **service 1 → the highest completed milestone below the
+target** (so 1→10 for 20k, 1→20 for 30k, 1→30 for 40k …), using total km / total days — a
+days-weighted pooled rate over every completed interval, not the last block alone. Superseded two
+earlier versions the same day: the original fixed `1→10` for every milestone, then a single
+`(M-20)→(M-10)` interval. 20k is unchanged by all of this (1→10 either way).
+A vehicle with no completed milestone below the target is **excluded (NaT)**, never backfilled from
+a more distant pair. Note the function only projects forward from history — it does **not** check
+whether the vehicle already completed the target; that is the separate
+`stale_completion_filter.py` post-filter's job.
+
 `refactored_test_dir/mi_scores_analysis.md` — feature-selection analysis.
 `REFACTOR_LOSSES.md` — line-referenced audit of `prepare_test_set.py` vs legacy `predservicemil_4.py`;
 source of the zero-fill percentages and the two-`selected_features.json` finding. Trust it.
 `S3_MIGRATION_GUIDE.md` — 8-stage plan to move data I/O to S3 (`s3io.py`, `stage_raw.py`,
 `pmsfeatureeng_s3.py`, `retrain_s3.py`). **Aspirational — none of those files exist yet.**
-`AGENTS.md` just points here. Treat the target-definition claims in `old_vs_refactored_comparison.md`
+`AGENTS.md` is NOT just a pointer — it is 83 lines with its own project framing, and it still
+describes the `ever` convention as the labelling rule. Production is candidates mode; treat
+`AGENTS.md`'s labelling section as superseded by this file. Treat the target-definition claims in `old_vs_refactored_comparison.md`
 and `later/refactoring_summary.md` as wrong (see Project).
+
+Not previously listed here, all current:
+- `MILESTONE_ROLLOUT_RUNBOOK.md` — **the operational source of truth** for promoting a milestone:
+  9 steps, exact commands, 3 human checkpoints. Keep it in sync with any pipeline change.
+- `test/CANDIDATE_RUNBOOK.md` — the earlier candidate-mode runbook (20k–100k), including a
+  PowerShell batch runner for 50k–100k. Superseded operationally by the rollout runbook above;
+  still the fullest write-up of *why* candidate mode replaced the earlier modes.
+- `milestones_20k_90k_100k_stats.md` — full Checkpoint A stats, gate battery and 3-seed tables for
+  20k/90k/100k.
+- `FABLE5_INVESTIGATION_BRIEF.md` — self-contained hand-off brief for auditing the project from
+  scratch. Every claim in it is stated to be reproducible from the repo; verify before relying.
+- `FABRIC_MIGRATION_GUIDE.md` — Microsoft Fabric counterpart to `S3_MIGRATION_GUIDE.md`, same
+  8-stage shape. Also **aspirational**; Stage 1 costs money, and it says read its `AWS_VS_FABRIC.md`
+  appendix first.
