@@ -21,11 +21,11 @@ One PyTorch binary classifier per milestone.
 ├── prepare_scripts.py                 # One-shot codegen helper (⚠️ source templates deleted)
 ├── fix_features.py                    # One-shot patcher for features.py (patches likely applied)
 │
-├── pmstrainfeatureEng_6.py            # Legacy monolith — training feature-eng
-├── predservicemil_4.py                # Legacy monolith — prediction feature-eng (executes at import)
+├── monoliths/pmstrainfeatureEng_6.py            # Legacy monolith — training feature-eng
+├── monoliths/predservicemil_4.py                # Legacy monolith — prediction feature-eng (executes at import)
 ├── training_run.py                    # Legacy scratch — unstructured 70k trainer (no main())
 ├── prediction_run.py                  # Legacy scratch — unstructured 70k predictor (no main())
-├── train_milestone.py                 # Legacy argv trainer over monolith output
+├── monoliths/train_milestone.py                 # Legacy argv trainer over monolith output
 │
 ├── features.py                        # Shared module imported by refactored + legacy scripts
 ├── requirements.txt                   # Core Python deps (incomplete — see below)
@@ -141,9 +141,9 @@ Pre-`features.py` scripts with heavy code duplication.
 
 | Script | Role | Notes |
 |--------|------|-------|
-| `pmstrainfeatureEng_6.py` | Training feature-eng monolith | Has `main()`, ~124k bytes |
-| `predservicemil_4.py` | Prediction feature-eng monolith | **Executes at import** — no `main()` guard |
-| `train_milestone.py` | argv trainer over monolith output | `python train_milestone.py <milestone>` |
+| `monoliths/pmstrainfeatureEng_6.py` | Training feature-eng monolith | Has `main()`, ~124k bytes |
+| `monoliths/predservicemil_4.py` | Prediction feature-eng monolith | **Executes at import** — no `main()` guard |
+| `monoliths/train_milestone.py` | argv trainer over monolith output | `python monoliths/train_milestone.py <milestone>` |
 | `training_run.py` | Unstructured 70k trainer scratch | No `main()`, hardcoded 70k paths |
 | `prediction_run.py` | Unstructured 70k predictor scratch | No `main()`, hardcoded 70k paths |
 | `eval_alan_tests.py` | Legacy model evaluator | Uses `ServicePredictionNN` (dropout 0.5), `StandardScaler` |

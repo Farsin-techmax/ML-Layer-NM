@@ -53,3 +53,21 @@ function_refactor_test.py
 copy_script.py
 append_gower.py
 quick_convert.py
+
+# Generated or local-only (2026-11-26 cleanup; moved items are listed in
+# c:\Techmax\cwf\backups\2026-11-26_cleanup\README.txt)
+# feature lists rewritten by every build_matrix run
+**/pruned_*.json
+# run logs of dprime_v2/run_40k_100k.sh
+dprime_v2/run_40k_100k/
+# generated test sets and their manifests
+test_sets/
+# explain cache of the retired pms_explain.py
+cache/
+# promoted model files: kept on disk, not in git
+production_models/
+# personal tool settings and notes
+.agents/
+.vibe-wise/
+# these hold customer Vehicle_Keys with visit dates -- never commit (the repo is public)
+q1_due_rule_experiment/*.json

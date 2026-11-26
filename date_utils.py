@@ -1,4 +1,4 @@
-"""date_utils.py -- one safe way to turn a date column into datetimes.
+"""date_utils.py -- to safely parse and convert the datetime types and format  to a unified one.
 
 WHY THIS EXISTS
 The raw data files are day-first:
@@ -10,8 +10,8 @@ been through `to_csv` writes its datetimes back out as ISO too.
 
 Parsed without `dayfirst=True`, a day-first value whose day is 1-12 silently becomes a different
 real date -- '06-12-2026' reads as 6 Dec instead of 12 Jun. No error, no NaT, just a wrong date.
-That is how `Service_History_Q2-2026.csv` came to be documented as running to 2026-12-06 when it
-actually ends 2026-06-29.
+That is how `Service_History_Q2-2026.csv` came to be documented as running upto 2026 november. This was observed while working with service history file where the dayfist bug was
+originally seen, eg: 2026-12-06 -> 2026-06-29 (the end date of the file in actuality)
 
 Parsed WITH `dayfirst=True`, an ISO value with a time component breaks the same way: on pandas
 3.0.3, `pd.to_datetime('2026-08-09 00:00:00', format='mixed', dayfirst=True)` returns 2026-09-08.
@@ -51,6 +51,12 @@ def looks_iso(s, sample=_SAMPLE):
     v = _sample(s, sample)
     if v.empty:
         return False
+    """
+    the reason we use 90% for match criteria passing lies in the 
+    assumption that one way  or other, bad data could sneak into the column, the function
+    is called into the column at once, and tighting it to have 100% matching critera would break
+    if a single bad entry is in the column, this is a security fallback
+    """
     return bool(v.str.match(_ISO_PREFIX).mean() > 0.9)
 
 

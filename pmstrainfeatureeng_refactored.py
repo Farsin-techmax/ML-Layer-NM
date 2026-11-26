@@ -3,7 +3,7 @@ import numpy as np
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from features import extract_k1, resolve_service_num
-from due_date import burn_rate_date, earliest_date
+from due_date import burn_rate_date, earliest_date, first_srv_date
 from date_utils import parse_dates
 
 
@@ -387,12 +387,16 @@ def build_candidates_cohort(df, serv, milestone, win_start, win_end, grace_days=
     """Label the FULL 'candidates' cohort in one global vectorised pass.
 
     due date = whichever comes first of the schedule projection (FirstSrvDate + N months) and the
-    service-1 -> service-10 burn-rate projection (due_date.burn_rate_date). `df` must already be
-    invoice-date-guarded -- FirstSrvDate == a genuine `Invoice date`, never the First Service Date
-    fallback -- and `serv` must carry Service_Num from features.resolve_service_num(), which is
-    now what every path uses: Service_Code as the source of truth, Description only as a fallback.
-    (This used to be two rival derivations -- raw Service_Code here, extract_kk(Description) in
-    process_service_data() -- and they disagreed on 1,983 rows.)
+    most-recent-interval burn-rate projection (due_date.burn_rate_date) -- 1->10 for a 20k
+    projection, (M-20)->(M-10) for milestone M > 20 (generalized 2026-09-09; was a fixed 1->10 pair
+    for every milestone before that, which meant a 30k+ projection stretched a rate measured on the
+    vehicle's earliest driving across an increasingly long, increasingly stale extrapolation gap).
+    `df` arrives with the invoice-date guard already applied by the caller (relaxed by default since
+    2026-09-01: FirstSrvDate falls back to First Service Date when the sale date is missing), and
+    `serv` must carry Service_Num from features.resolve_service_num(), which is now what every path
+    uses: Service_Code as the source of truth, Description only as a fallback. (This used to be two
+    rival derivations -- raw Service_Code here, extract_kk(Description) in process_service_data()
+    -- and they disagreed on 1,983 rows.)
 
     TargetFlag = 1 if the milestone was completed on or before quarter_end + grace_days, with NO
     restriction on how early the completion happened -- an "early completer" (already done before
@@ -403,10 +407,13 @@ def build_candidates_cohort(df, serv, milestone, win_start, win_end, grace_days=
 
     Ported from and verified byte-for-byte against a scratchpad reference build: 0 due-date
     mismatches across all 41,983 candidates, 2016Q1-2025Q4, grace 15d -> 23,269 positive / 18,714
-    negative. The reproduction depends on due_date.burn_rate_date() sorting codes {1, 10, milestone}
-    together (a handful of VINs carry two same-day records for the same Service_Num with different
-    Mileage, and the "first visit" tie-break is sensitive to exactly what is sorted together with
-    what) -- see that function's docstring.
+    negative. That verification predates the 2026-09-09 burn-rate generalization and covered milestone
+    20 only (the fixed-1->10-pair case, unchanged by the generalization) -- it does NOT cover
+    milestones above 20, which now use a different anchor pair and have no equivalent reference build
+    to check against. The reproduction depends on due_date.burn_rate_date() sorting codes {lo, hi,
+    milestone} together (a handful of VINs carry two same-day records for the same Service_Num with
+    different Mileage, and the "first visit" tie-break is sensitive to exactly what is sorted together
+    with what) -- see that function's docstring.
     """
     vins = df["VIN"].values
     first_srv = df.set_index("VIN")["FirstSrvDate"].reindex(vins)
@@ -457,6 +464,58 @@ def build_candidates_cohort(df, serv, milestone, win_start, win_end, grace_days=
     return c.drop(columns=["FirstSrvDate"], errors="ignore")
 
 
+def _apply_first_srv_date(df, serv, args=None, strict=None):
+    """Attach the one-per-VIN `FirstSrvDate` anchor, collapse EDA to one row per VIN, apply the
+    invoice-date guard. Shared shape with create_candidates_test_cohort()'s inline block -- if you
+    change one, change both, or train and test place the same vehicle in different quarters.
+
+    Two separate "which row wins" questions, deliberately answered differently:
+      - the ANCHOR wants the EARLIEST date across every Vehicle_Key (due_date.first_srv_date).
+      - the FEATURE row wants the MOST CURRENT state, because after a resale the newest key is the
+        one carrying live `Last Service - PMS` / `Last Service Mileage` (on one traced resold vehicle the
+        new key reads 30k, the old key still reads a stale 20k). So dedupe keeps the row with the
+        latest `Last Service Date`, NOT the file's first row -- the old
+        `.drop_duplicates(subset='VIN')` kept whichever came first in the CSV, which is arbitrary.
+
+    The invoice-date guard becomes per-VIN too: strict keeps a VIN when ANY of its keys carries a
+    genuine sale date, since one key's missing invoice date no longer decides the anchor alone.
+    """
+    if strict is None:
+        strict = getattr(args, "strict_invoice_guard", False)
+
+    anchor = first_srv_date(df, serv)
+    has_invoice = df.groupby("VIN")["Invoice date"].apply(lambda s: s.notna().any())
+
+    n_rows, n_vins = len(df), df["VIN"].nunique()
+    df = (df.sort_values("Last Service Date", na_position="first")
+            .drop_duplicates(subset="VIN", keep="last").copy())
+    if n_rows != n_vins:
+        print(f"multi-key VINs: {n_rows:,} EDA rows -> {n_vins:,} VINs "
+              f"({n_rows - n_vins:,} resale duplicates collapsed, newest key kept)")
+
+    df["FirstSrvDate"] = df["VIN"].map(anchor)
+    df = df.dropna(subset=["FirstSrvDate"]).copy()
+
+    # Invoice-date guard, RELAXED by default since 2026-09-01 (cohort v2 decision): vehicles
+    # without a sale date are kept, anchored on the earliest other evidence. The strict guard capped
+    # cohort recall of actual turn-ups at 81-92% before any date was computed; relaxing lifts
+    # the ceiling to 96-99% (measured on the July 2026 overlap). The old concern stands --
+    # without a sale date the anchor is merely the first visit in the file, and 63.2% of such
+    # vehicles look "never did a 20k" vs 16.5% with one -- but for the network-turn-up question
+    # those zeros are largely genuine (defected customers), and the July A/B priced the
+    # pathology in end-to-end. --strict-invoice-guard restores the old behaviour.
+    n_before = len(df)
+    if strict:
+        df = df[df["VIN"].map(has_invoice).fillna(False)].copy()
+        print(f"invoice-date guard (STRICT): {n_before:,} -> {len(df):,} EDA vehicles "
+              f"({n_before - len(df):,} dropped, no genuine sale date on any key)")
+    else:
+        n_fallback = int((~df["VIN"].map(has_invoice).fillna(False)).sum())
+        print(f"invoice-date guard (relaxed): {len(df):,} vehicles kept, "
+              f"{n_fallback:,} anchored without a sale date")
+    return df
+
+
 def run_candidates_mode(args, milestone, label_suffix, eda_path, service_history_path,
                         rfm_path, appointdf_path, digidf_path, vhc_path, servcode_path):
     """Build the 'candidates' training matrix (Stage A+B of the labelling plan).
@@ -501,18 +560,6 @@ def run_candidates_mode(args, milestone, label_suffix, eda_path, service_history
                 "Last Service Date", "Next Service Date"]:
         df[col] = parse_dates(df[col])
     df["Service_Num"] = df["Last Service - PMS"].apply(extract_k1)
-    df["FirstSrvDate"] = df["Invoice date"].fillna(df["First Service Date"])
-    df = df.dropna(subset=["FirstSrvDate"]).drop_duplicates(subset="VIN")
-
-    # Invoice-date guard: without a genuine sale date, "first service" is merely the first visit
-    # that happens to fall inside the file, and the vehicle may have years of unseen history
-    # (including its own milestone completion) before the file starts. See the labelling plan's
-    # Context section 4 for the measured effect (63.2% "never did a 20k" without a sale date vs
-    # 16.5% with one).
-    n_before_guard = len(df)
-    df = df[df["Invoice date"].notna()].copy()
-    print(f"invoice-date guard: {n_before_guard:,} -> {len(df):,} EDA vehicles "
-          f"({n_before_guard - len(df):,} dropped, no genuine sale date)")
 
     serv_raw = pd.read_csv(service_history_path, low_memory=False, encoding="ISO-8859-1")
     serv_raw["Service_Date"] = parse_dates(serv_raw["Service_Date"])
@@ -521,6 +568,12 @@ def run_candidates_mode(args, milestone, label_suffix, eda_path, service_history
     # Service_Code first, Description as fallback -- the same rule process_service_data() uses, so
     # candidate labelling and feature derivation can no longer disagree about what service a row is.
     serv_raw["Service_Num"] = resolve_service_num(serv_raw)
+
+    # Anchor = earliest evidence across EVERY Vehicle_Key for the VIN plus raw service history, one
+    # date per VIN (due_date.first_srv_date). Loaded after service history because the anchor now
+    # needs it. Keep this identical to create_candidates_test_cohort() -- the two builders must
+    # agree on the anchor or train and test place the same vehicle in different quarters.
+    df = _apply_first_srv_date(df, serv_raw, args)
     print(f"EDA rows {len(df):,} | service history rows {len(serv_raw):,}\n")
 
     cohort = build_candidates_cohort(df, serv_raw, milestone, win_start, win_end,
@@ -1166,7 +1219,7 @@ def process_service_data(mastersheet: str,servhistory: str, rfm: str, appointdf:
             
             # NOTE: `& (pmsnew["TargetFlag"]==1)` removed 2026-08-13 -- it leaked the label into the
             # feature (the flag could only ever be 1 for positives) and mismatched the
-            # prediction-side definition in predservicemil_4.py:2679, which has no label term and so
+            # prediction-side definition in monoliths/predservicemil_4.py:2679, which has no label term and so
             # means something entirely different at inference -- causing systematic over-prediction.
             # Verified before the fix on the 60k matrix: 208 rows had the flag set, ALL 208 were
             # TargetFlag==1, zero exceptions. This restores the definition already corrected in
@@ -1539,6 +1592,10 @@ if __name__ == "__main__":
                         help="extra suffix on the output matrix, e.g. --label-tag narrow -> "
                              "final_processed_20k_window_narrow.csv. Lets two window builds with "
                              "different --label-start coexist instead of overwriting each other.")
+    parser.add_argument("--strict-invoice-guard", action="store_true",
+                        help="candidates mode: restore the pre-2026-09-01 behaviour of dropping "
+                             "vehicles without a genuine Invoice date instead of anchoring them "
+                             "on First Service Date. Kept for A/Bs against the old cohorts.")
     args = parser.parse_args()
 
     milestone_val = int(args.milestone.lower().replace('k', ''))

@@ -9,7 +9,7 @@ from features import expected_milestone_months
 from date_utils import parse_dates
 
 def create_candidates_test_cohort(eda_path, service_history_path, milestone, start_date, end_date,
-                                  grace_days, band_days=None):
+                                  grace_days, band_days=None, strict_invoice_guard=False):
     """Test-set counterpart of build_candidates_cohort() (--label-mode candidates on the training
     side): due date = whichever comes first of the schedule and a service-1 -> service-10 burn-rate
     projection (due_date.burn_rate_date), invoice-date-guarded so FirstSrvDate is always a genuine
@@ -36,6 +36,7 @@ def create_candidates_test_cohort(eda_path, service_history_path, milestone, sta
     them apart.
     """
     from due_date import burn_rate_date, earliest_date
+    from pmstrainfeatureeng_refactored import _apply_first_srv_date
 
     print(f"Loading EDA data from {eda_path}")
     df = pd.read_csv(eda_path, low_memory=False, encoding="ISO-8859-1")
@@ -43,17 +44,20 @@ def create_candidates_test_cohort(eda_path, service_history_path, milestone, sta
 
     df["Invoice date"] = parse_dates(df["Invoice date"])
     df["First Service Date"] = parse_dates(df["First Service Date"])
-    df["FirstSrvDate"] = df["Invoice date"].fillna(df["First Service Date"])
-    n_before = len(df)
-    df = df[df["Invoice date"].notna()].copy()
-    print(f"invoice-date guard: {n_before:,} -> {len(df):,} EDA vehicles "
-          f"({n_before - len(df):,} dropped, no genuine sale date)")
+    df["Last Service Date"] = parse_dates(df["Last Service Date"])
 
     serv = pd.read_csv(service_history_path, low_memory=False, encoding="ISO-8859-1")
     serv["Service_Date"] = parse_dates(serv["Service_Date"])
     serv["Mileage"] = pd.to_numeric(serv["Mileage"], errors="coerce")
     serv = serv.dropna(subset=["Service_Date"])
     serv["Service_Num"] = resolve_service_num(serv)
+
+    # One anchor per VIN, earliest evidence across every Vehicle_Key + raw service history, and the
+    # invoice-date guard. Calls the TRAINING builder's helper directly rather than re-implementing
+    # it -- these two must agree on the anchor exactly or the same vehicle lands in different
+    # quarters on the two sides. Also the first thing here that dedupes multi-key VINs at all: this
+    # function never did, so a resold VIN appeared as two rows with two different due dates.
+    df = _apply_first_srv_date(df, serv, strict=strict_invoice_guard)
 
     vins = df["VIN"].values
     first_srv = df.set_index("VIN")["FirstSrvDate"].reindex(vins)
@@ -305,6 +309,10 @@ if __name__ == "__main__":
                              "that completed before the band opened are DROPPED (not flagged), and "
                              "there is no EarlyCompleter column. Overrides --grace-days. Writes a "
                              "_cand_b{N} file.")
+    parser.add_argument("--strict-invoice-guard", action="store_true",
+                        help="candidates mode: restore the pre-2026-09-01 behaviour of dropping "
+                             "vehicles without a genuine Invoice date. Must match the training "
+                             "matrix build or train and test describe different populations.")
     args = parser.parse_args()
 
     if args.label_mode == "candidates" and args.grace_days is None and args.band_days is None:
@@ -338,6 +346,7 @@ if __name__ == "__main__":
             end_date=args.window_end,
             grace_days=args.grace_days,
             band_days=args.band_days,
+            strict_invoice_guard=args.strict_invoice_guard,
         )
     else:
         cohort = create_test_cohort(

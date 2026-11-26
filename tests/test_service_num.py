@@ -1,6 +1,6 @@
 """test_service_num.py -- is the PMS service number read correctly, everywhere?
 
-Plain script (no pytest in this repo): `python test_service_num.py`. Exit 0 = all pass.
+Plain script (no pytest in this repo): `PYTHONPATH=. python tests/test_service_num.py` (from the repo root). Exit 0 = all pass.
 
 BACKGROUND
 `Description` is a mileage band whose upper bound is the service number, but the same 20k service
@@ -134,7 +134,7 @@ def section_c_file():
 def section_d_callers():
     print("\n=== D. CALLERS: every derivation site uses the helper ===")
     files = ["prepare_test_set.py", "pmstrainfeatureeng_refactored.py", "milestone_features.py",
-             "july_candidates_overlap.py", "july_overlap_diagnose.py"]
+             "analysis/july_candidates_overlap.py", "analysis/july_overlap_diagnose.py"]
     for f in files:
         src = open(f, encoding="utf-8").read()
         bad = [ln.strip() for ln in src.splitlines()
@@ -148,7 +148,7 @@ def section_d_callers():
         # surfaces as a NameError at runtime, which is exactly how milestone_features.py shipped
         # broken after the date fix.
         try:
-            mod = importlib.import_module(f[:-3])
+            mod = importlib.import_module(f[:-3].replace("/", "."))
             names = [n for n in ("parse_dates", "resolve_service_num") if n in src]
             missing = [n for n in names if not hasattr(mod, n)]
             check(f"{f} imports resolve exactly", not missing, f"missing: {missing}")

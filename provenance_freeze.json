@@ -1,0 +1,46 @@
+﻿{
+    "files":  {
+                  "data\\VHC_Q2-2026.csv":  {
+                                                "sha256":  "21CC21A9D07234DC80243AC7A218D2EEFFE006D3D7B3B384E0874FF04B4FDE97",
+                                                "mtime":  "2026-07-13 18:20:53",
+                                                "size":  31293846
+                                            },
+                  "data\\EDA_Q2-2026.csv":  {
+                                                "sha256":  "7BBF739835CC62E0ADA9F2CCE393AADE0AB09EC86EC52AB750BA273DAC2C86DA",
+                                                "mtime":  "2026-07-24 10:46:04",
+                                                "size":  51991796
+                                            },
+                  "data\\Service_Code_Desc.csv":  {
+                                                      "sha256":  "CF2057A1098993C21E43B9CEDA72B40132E0DC4EDBF487256F359431FE93F619",
+                                                      "mtime":  "2026-07-07 11:14:29",
+                                                      "size":  8300
+                                                  },
+                  "data\\Service_History_Q2-2026.csv":  {
+                                                            "sha256":  "8E304B89013A9A5E03A880C8FDE446C3F799CAA67F6B2E499F1C07E8BF20998A",
+                                                            "mtime":  "2026-08-19 12:46:49",
+                                                            "size":  114359663
+                                                        },
+                  "data\\RFM_Q2-2026.csv":  {
+                                                "sha256":  "49F9F8473710D9579A72272E4922B539BEA7AA3D0F05A27999F7B1F8059FD91C",
+                                                "mtime":  "2026-07-13 18:13:31",
+                                                "size":  1421846
+                                            },
+                  "data\\Digital_Sessions_Q2-2026.csv":  {
+                                                             "sha256":  "00C94AD9296FE04385F93805F3955FB5FF5DCD2219E554E60939F1EA60340FE2",
+                                                             "mtime":  "2026-07-13 18:21:07",
+                                                             "size":  2583773
+                                                         },
+                  "data\\Service_History_Jul_2026.xlsx":  {
+                                                              "sha256":  "C2060A64F94237E9514EE27889CF3EFD9EDCA614860333ECD3BCFE63A63EF50F",
+                                                              "mtime":  "2026-08-31 12:18:43",
+                                                              "size":  837092
+                                                          },
+                  "data\\Appointments_Q2-2026.csv":  {
+                                                         "sha256":  "DB6080859AFDB6023501E99B91DA9F6CBF4AD39E8C2B5DC2D27C232555840B09",
+                                                         "mtime":  "2026-07-13 18:20:05",
+                                                         "size":  48960306
+                                                     }
+              },
+    "git_head":  "3ce6384c787c4c291e7485f6dd424382336db035",
+    "frozen_at":  "2026-09-01 12:40:35"
+}

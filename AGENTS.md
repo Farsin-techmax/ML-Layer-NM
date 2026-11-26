@@ -7,7 +7,7 @@ training: for each milestone, find the vehicles (by VIN/Vehicle keys) that had p
 > `1` = the vehicle has done this milestone at any point up to the latest data, `0` = it was expected
 > for the milestone and is still pending past its expected date. The quarter selects **which pending
 > cohort is sampled as the 0s**, nothing more. This is what both pipelines already do —
-> `pmstrainfeatureeng_refactored.py:136` and legacy `pmstrainfeatureEng_6.py:229-234`
+> `pmstrainfeatureeng_refactored.py:136` and legacy `monoliths/pmstrainfeatureEng_6.py:229-234`
 > (`turnup = df.query("\`Last Service - PMS\` == '{svc}'")`, `TargetFlag = 1`) — so it is the
 > convention, not a defect. An earlier note here called it one; that is superseded.
 >
@@ -57,22 +57,22 @@ project structure and arch:
 /test_sets: test cohort keys for each milestone that will be used for scoring the model (only
          20/30/40/50k exist today, and their column set is wrong — see CLAUDE.md gotchas)
 /validatecode: earlier used for storing intermitten artefacts like clusters and final merged datasets
-         for each milestone for training. NOTE it is still a live *input*: predservicemil_4.py:2307
+         for each milestone for training. NOTE it is still a live *input*: monoliths/predservicemil_4.py:2307
          reads Model_clusters_{m}.csv / Variant_clusters_{m}.csv / Nationality_clusters_{m}.csv here
 /refactored_test_dir: same idea as validatecode, for the refactored pipeline
 (no /plots dir — plots are written next to the weights, e.g. models/models_alan/{m}k/shap_summary.png)
 
-main files: pmstrainfeatureeng_refactored.py - the file with refactoring and fixes applied to the legacy script pmstrainfeatureEng_6.py (capital E)
+main files: pmstrainfeatureeng_refactored.py - the file with refactoring and fixes applied to the legacy script monoliths/pmstrainfeatureEng_6.py (capital E)
 
-prepare_test_set.py: finding and making the test set, predservicemil_4.py is the legacy
+prepare_test_set.py: finding and making the test set, monoliths/predservicemil_4.py is the legacy
 
-train_milestone.py and retrain.py: model training scripts, training_run.py is the legacy
+monoliths/train_milestone.py and retrain.py: model training scripts, training_run.py is the legacy
 
 score_milestone.py: is the scoring of the expected set we made in prepare_test_set.py for each milestone for each quarter. prediction_run.py is the legacy
 
 features.py: the shared module for each of the features shared between the training and testing pipeline
 
-eval_test_metrics.py: evaluation scripts, eval_alan_tests.py was for testing the test set which i obtained externally and stored in /tests_alan
+eval_test_metrics.py: evaluation scripts, eval_alan_tests.py was for testing the test set which i obtained externally and stored in /tests_alan. This was later removed from both repo and directory on 14/09/2026
 
 milestone_features.py: to add a few milestone based features to the training matrix
 
