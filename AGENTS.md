@@ -72,7 +72,7 @@ score_milestone.py: is the scoring of the expected set we made in prepare_test_s
 
 features.py: the shared module for each of the features shared between the training and testing pipeline
 
-eval_test_metrics.py: evaluation scripts, eval_alan_tests.py was for testing the test set which i obtained externally and stored in /tests_alan
+eval_test_metrics.py: evaluation scripts, eval_alan_tests.py was for testing the test set which i obtained externally and stored in /tests_alan. This was later removed from both repo and directory on 14/09/2026
 
 milestone_features.py: to add a few milestone based features to the training matrix
 
