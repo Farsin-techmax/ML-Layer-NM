@@ -472,7 +472,7 @@ def _apply_first_srv_date(df, serv, args=None, strict=None):
     Two separate "which row wins" questions, deliberately answered differently:
       - the ANCHOR wants the EARLIEST date across every Vehicle_Key (due_date.first_srv_date).
       - the FEATURE row wants the MOST CURRENT state, because after a resale the newest key is the
-        one carrying live `Last Service - PMS` / `Last Service Mileage` (on 5N1DR3MR9RC248028 the
+        one carrying live `Last Service - PMS` / `Last Service Mileage` (on one traced resold vehicle the
         new key reads 30k, the old key still reads a stale 20k). So dedupe keeps the row with the
         latest `Last Service Date`, NOT the file's first row -- the old
         `.drop_duplicates(subset='VIN')` kept whichever came first in the CSV, which is arbitrary.
@@ -1219,7 +1219,7 @@ def process_service_data(mastersheet: str,servhistory: str, rfm: str, appointdf:
             
             # NOTE: `& (pmsnew["TargetFlag"]==1)` removed 2026-08-13 -- it leaked the label into the
             # feature (the flag could only ever be 1 for positives) and mismatched the
-            # prediction-side definition in predservicemil_4.py:2679, which has no label term and so
+            # prediction-side definition in monoliths/predservicemil_4.py:2679, which has no label term and so
             # means something entirely different at inference -- causing systematic over-prediction.
             # Verified before the fix on the 60k matrix: 208 rows had the flag set, ALL 208 were
             # TargetFlag==1, zero exceptions. This restores the definition already corrected in

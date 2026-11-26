@@ -1,6 +1,6 @@
 """test_dayfirst.py -- does every date column in the pipeline parse to the right real date?
 
-No pytest in this repo, so this is a plain script: `python test_dayfirst.py`. Exit code 0 = all
+No pytest in this repo, so this is a plain script: `PYTHONPATH=. python tests/test_dayfirst.py` (from the repo root). Exit code 0 = all
 pass, 1 = at least one fail. Every check prints PASS/FAIL with the observed value, so a failure
 tells you what it saw, not just that it broke.
 

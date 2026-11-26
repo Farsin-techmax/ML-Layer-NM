@@ -11,7 +11,7 @@ Two questions the headline overlap number cannot answer:
      noisy? Prints the distribution of (predicted due date - actual service date) in months, and
      the recall that a wider window either side of July would have bought.
 
-Run from the repo root: python july_overlap_diagnose.py
+Run from the repo root: PYTHONPATH=. python analysis/july_overlap_diagnose.py
 """
 import argparse
 import os

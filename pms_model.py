@@ -6,7 +6,7 @@ metrics). Before this module existed, BinaryClassifier was defined 5 times, add_
 3 times and the inference feature-derivation block 3 times across those files. They agreed only
 because they were hand-copied; any fix to one silently left the others behind.
 
-The legacy trainers (train_milestone.py, legacy/parked/training_run.py) keep their own copies on
+The legacy trainers (monoliths/train_milestone.py, legacy/parked/training_run.py) keep their own copies on
 purpose: they use a different network (ServicePredictionNN, dropout 0.5) and StandardScaler.
 """
 import os

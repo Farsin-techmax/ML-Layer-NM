@@ -27,7 +27,7 @@ from both `mileage` (a lifetime rate) and `interval` (a population-median-based 
 its own docstring.
 
 A seventh, `last_completed_plus_months`, was added 2026-10-08 from a vehicle-level trace
-(JN8AY2NY9R9499028, see CLAUDE.md's Gotchas): the vehicle's last completed milestone below the
+(one traced vehicle, see CLAUDE.md's Gotchas): the vehicle's last completed milestone below the
 target + a flat number of months (default 6), no rate computed at all. See its own docstring for
 why this beats both `schedule` and `burn_rate` on vehicles whose pace changed after their earlier
 services.
@@ -55,14 +55,14 @@ def first_srv_date(df, serv, vin_col="VIN"):
     `Invoice date` else `First Service Date` -- was wrong two ways:
 
     1. **One VIN can hold several EDA rows.** When a vehicle is resold the dealer group issues a new
-       Vehicle_Key with the sequence bumped (`03-557292-0` -> `03-557292-1`) and EDA carries BOTH,
+       Vehicle_Key with the sequence bumped (`<pre>-<base>-0` -> `-1`) and EDA carries BOTH,
        each with its OWN `First Service Date` -- the new owner's first visit, not the vehicle's.
        See the company-rule note in CLAUDE.md. 1,102 VINs in EDA_Q2-2026 have >1 row (325 survive
        the `Last Service - PMS != '-'` filter), so the same VIN got two different due dates and
        could land in two different quarters as two rows. The training side hid half of this with a
        `.drop_duplicates(subset='VIN')` that kept whichever row came first in the CSV -- arbitrary,
        not earliest -- and the test-set builder did not dedupe at all.
-    2. **EDA's `First Service Date` is not always the first service.** On `5N1DR3MR9RC248028` the
+    2. **EDA's `First Service Date` is not always the first service.** On one traced resold vehicle the
        older key reads 2025-04-19, which is that vehicle's code-10 visit; its true first service is
        2024-07-03 (code 1, 1,073 km). So picking the earlier EDA row is not enough either --
        service history has to be consulted directly.
@@ -320,7 +320,7 @@ def last_completed_plus_months(vins, serv_cut, milestone, months=6):
     about the NEXT interval, and resets the clock at whatever the vehicle's most recent actual visit
     was.
 
-    Traced on VIN JN8AY2NY9R9499028 (2026-10-08): `schedule` said 2025-07-08 (6 months too early --
+    Traced on one vehicle (2026-10-08): `schedule` said 2025-07-08 (6 months too early --
     the vehicle hadn't even had its 10k yet), `burn_rate` said 2026-11-24 (11 months too late -- its
     early low-mileage stretch dragged the pooled rate down), this leg says 2026-01-22 -- 20 days from
     the real completion, 2026-01-02. Measured against the 444 (20k) / 460 (30k) Q1-2026 vehicles the

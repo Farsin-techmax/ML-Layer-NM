@@ -19,7 +19,7 @@ Two cohort variants are printed because "already did this milestone" is a real b
   raw        every vehicle whose due date lands in the window
   open       raw minus vehicles that already completed m before the window opened
 
-Run from the repo root: python july_candidates_overlap.py
+Run from the repo root: PYTHONPATH=. python analysis/july_candidates_overlap.py
 """
 import argparse
 import os

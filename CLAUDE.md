@@ -31,7 +31,7 @@ dropped by the `dfafter` filter, not counted positive.
 
 This applies to **both training and test**, and it is what the code already does in both pipelines:
 - `pmstrainfeatureeng_refactored.py:136` — `turnup = df.query("\`Last Service - PMS\` == '{svc}'")`
-- legacy `pmstrainfeatureEng_6.py:229-234` and `legacy/pmstrainfeatureEng.py:172` — identical
+- legacy `monoliths/pmstrainfeatureEng_6.py:229-234` and `legacy/pmstrainfeatureEng.py:172` — identical
 - `prepare_test_set.py:88-94` — `Service_Num == milestone` anywhere in service history
 
 The user chose this deliberately over a quarter-conditioned rule. Earlier revisions of this file and
@@ -98,6 +98,22 @@ schedule due date and no invoice guard.
   (`$env:PMS_DEBUG=1`). The file is untracked; before 2026-08-12 it was written unconditionally and
   dirtied the working tree on every feature-eng run.
 
+### Project layout (2026-11-26)
+Shared modules and the main entry scripts stay at the **root** — about 50 scripts import them by bare
+name (`features`, `date_utils`, `due_date`, `pms_model`, `pmstrainfeatureeng_refactored`,
+`build_unionstale_20k`), and every documented command assumes it. Everything in a sub-folder is run
+**from the repo root with `$env:PYTHONPATH = "."`** so its imports of root modules resolve:
+
+| folder | what lives there |
+|---|---|
+| root | shared modules; production builders and scorers (`pmstrainfeatureeng_refactored.py`, `prepare_test_set.py`, `retrain.py`, `score_milestone.py`, `eval_test_metrics.py`, `leak_screen.py`, `write_manifest.py`, `stale_completion_filter.py`, `tidy.py`) |
+| `dprime_v2/` | the D′ v2 pipeline — current best model (±45-day list + tree) |
+| `tests/` | gate G2 regression scripts (`test_dayfirst.py`, `test_service_num.py`) |
+| `analysis/` | reconciliation / overlap reports (`reconcile_quarter.py`, `q3_eval_report.py`, `july_*`) |
+| `monoliths/` | the pre-`features.py` monoliths + `train_milestone.py` — NOT the `/legacy` archive |
+| `q1_due_rule_experiment/`, `noshow_feature_review/`, `Q2/`, `test/` | experiment scripts and runbooks behind numbers in this file |
+| `production_models/`, `models/`, `refactored_test_dir/`, `test_sets/`, `data/`, `Q3/` | artifacts and data — gitignored |
+
 ## Architecture — two parallel pipelines
 Both share `features.py` (~60 pure feature-derivation fns; `from features import *`). Both do
 (1) feature-eng → wide numeric per-VIN matrix with `TargetFlag`, (2) per-milestone NN.
@@ -127,7 +143,7 @@ Both produced wrong numbers that shipped into docs before being caught. Neither 
   vehicles mislabelled "did not turn up". `Service_Code` is now the source of truth and
   `Description` only the fallback. **The `Service_Num == 0` ⇒ non-PMS convention is load-bearing**
   (12 sites in `features.py` test it); a naive "just use `Service_Code`" change empties every
-  non-PMS feature — `test_service_num.py` check B exists to catch exactly that.
+  non-PMS feature — `tests/test_service_num.py` check B exists to catch exactly that.
 
 ### Current pipeline (features.py-based)
 - **Feature-eng**: `python pmstrainfeatureeng_refactored.py <year> <quarter> <milestone> [--train-cutoff YYYY-MM-DD]`.
@@ -180,9 +196,9 @@ Both produced wrong numbers that shipped into docs before being caught. Neither 
   `models/{m}k/selected_features.json`. Use `eval_test_metrics.py`.
 
 ### Legacy / monolith pipeline
-- Monoliths (pre-`features.py`, heavy duplication): `pmstrainfeatureEng_6.py` (training, `main()`),
-  `predservicemil_4.py` (prediction; **executes at import**).
-- `python train_milestone.py <milestone>` — argv trainer over the monolith's output →
+- Monoliths (pre-`features.py`, heavy duplication): `monoliths/pmstrainfeatureEng_6.py` (training, `main()`),
+  `monoliths/predservicemil_4.py` (prediction; **executes at import**).
+- `python monoliths/train_milestone.py <milestone>` — argv trainer over the monolith's output →
   `models/{m}k/`. `training_run.py` / `prediction_run.py` are unstructured top-level scratch
   scripts (no `main()`, hardcoded 70k paths) — read before running.
 ### Terminology: "legacy" means the `/legacy` DIRECTORY
@@ -223,8 +239,9 @@ No pytest. Two plain scripts, run from repo root, **exit 0 = pass**, each prints
 observed value per check:
 
 ```
-python test_dayfirst.py      # expect "41/41 passed"  -- every date column in every data file
-python test_service_num.py   # expect "31/31 passed"  -- Service_Num across all three spellings
+$env:PYTHONPATH = "."
+python tests/test_dayfirst.py      # expect "41/41 passed"  -- every date column in every data file
+python tests/test_service_num.py   # expect "31/31 passed"  -- Service_Num across all three spellings
 ```
 
 Each guards one of the two silent-corruption traps above, in four layers: unit (hand-written values
@@ -256,22 +273,16 @@ history could not catch. `provenance_freeze.json` is the 2026-09-08 hash freeze 
 `data/*.csv` inputs; gate G1 checks the current files against it. Manifest every matrix, test set
 and `best_model.pt` — the runbook has the exact invocations.
 
-### Explainability
-`pms_explain.py` / `explain_server.py` — SHAP over the **promoted** `production_models/{m}k/`
-artifacts (not `models/` staging). SHAP values are in **log-odds** (`BinaryClassifier` emits
-logits): `base_value + sum(shap) == logit` is asserted at build time, so a mismatch is a bug. The
-background distribution is a sample of the same cohort, so contributions read as "relative to the
-average vehicle due this quarter" — change the cohort and the numbers legitimately move.
-```
-python pms_explain.py --milestone 20 --quarter Q1 --vin <VIN>
-python pms_explain.py --milestone 20 --quarter Q1 --model-summary --top 25
-python explain_server.py            # http://127.0.0.1:8000, stdlib http.server, no Flask
-```
-Binds localhost only — the cohorts hold customer VINs. First request per (milestone, quarter) is
-slow, then cached to `cache/explain/` keyed on model+cohort hash.
+### Explainability — retired 2026-11-26
+`pms_explain.py` / `explain_server.py` (SHAP over the old `production_models/{m}k/` NN, plus a
+localhost viewer) were intermediate tools for finding data anomalies. Moved with `add_vehicle_key.py`
+and `q1_due_rule_experiment/avg_interval_no_invoice.py` to
+`c:\Techmax\cwf\backups\2026-11-26_cleanup\08_anomaly_scripts\`. What carries over: SHAP of a
+`BinaryClassifier` is in **log-odds** (`base_value + sum(shap) == logit`), and contributions read
+relative to the cohort used as background — change the cohort and the numbers legitimately move.
 
 ### Cohort-vs-reality validation
-`july_candidates_overlap.py` / `july_overlap_diagnose.py` — score-free check of the candidate
+`analysis/july_candidates_overlap.py` / `analysis/july_overlap_diagnose.py` — score-free check of the candidate
 *list* against a July 2026 service log that was **not** in the base history (which stops
 2026-06-29). The first reports recall/precision of the cohort per milestone, raw and
 "open" (minus already-completed); the second explains the misses, splitting **reachability** (the
@@ -361,7 +372,7 @@ reconciliation for the present codebase against Q1 and Q2 sets.
   chance and the worst of the four. `/legacy` never implemented it
   ([legacy/pmstrainfeatureEng.py:2573](legacy/pmstrainfeatureEng.py#L2573), plain
   `expected - actual`, same on the prediction side at
-  [predservicemil_4.py:2131](predservicemil_4.py#L2131)). Keep it available for demonstration only.
+  [monoliths/predservicemil_4.py:2131](monoliths/predservicemil_4.py#L2131)). Keep it available for demonstration only.
 - **Variant results, seed 42, same regenerated matrices** (2026-08-16). `AUCtr`/`AUCte` are
   `PMS_Delay` alone; the rest is the full model on the Q1 test set.
 
@@ -440,9 +451,9 @@ reconciliation for the present codebase against Q1 and Q2 sets.
   ([legacy/pmstrainfeatureEng.py:2621-2625](legacy/pmstrainfeatureEng.py#L2621-L2625)); the clause
   is now gone from `pmstrainfeatureeng_refactored.py` too. Post-fix 20k crosstab: 1,040 negatives
   and 103 positives carry the flag, and it became the **#1 permutation-importance feature on 20k**
-  (+0.1018). `pmstrainfeatureEng_6.py:2650` still has the bug — legacy monolith, not on the current
+  (+0.1018). `monoliths/pmstrainfeatureEng_6.py:2650` still has the bug — legacy monolith, not on the current
   path. Note the two pipelines disagree on the mileage term (training `Last Service Mileage`,
-  `predservicemil_4.py:2680` `Last PMS Mileage`) — unresolved.
+  `monoliths/predservicemil_4.py:2680` `Last PMS Mileage`) — unresolved.
 - **`--label-mode window` makes training match the test cohorts** (added 2026-08-16, `ever` is
   still the default). `python pmstrainfeatureeng_refactored.py 2026 Q1 20 --train-cutoff 2025-12-31
   --label-mode window --label-start 2018-01-01` → `refactored_test_dir/final_processed_20k_window.csv`;
@@ -516,11 +527,11 @@ reconciliation for the present codebase against Q1 and Q2 sets.
   2026** candidate cohort.
 
   When a vehicle changes owner the group re-issues the key with the sequence incremented
-  (`03-557292-0` → `03-557292-1`) — a **company-wide identifier convention, not a data error**.
+  (`<pre>-<base>-0` → `<pre>-<base>-1`) — a **company-wide identifier convention, not a data error**.
   EDA keeps both rows, and each carries its own `First Service Date`, which for the new key is the
-  *new owner's* first visit, not the vehicle's. `5N1DR3MR9RC248028`:
+  *new owner's* first visit, not the vehicle's.
 
-  **A BARE trailing dash (`03-90215-`, no digit) = sold by an EXTERNAL dealer but serviced with
+  **A BARE trailing dash (`<pre>-<base>-`, no digit) = sold by an EXTERNAL dealer but serviced with
   our client.** 70,214 of 130,759 EDA rows (53.70%); 69,700 VINs carry only bare keys. Nothing
   special about them — **do not prioritise or special-case them**. They are the plain majority
   case. Structurally the key always matches `<pre>-<base>-<seq>` (130,759/130,759 conform);
@@ -529,15 +540,11 @@ reconciliation for the present codebase against Q1 and Q2 sets.
   numbered one on the same base (443 groups) the bare row is always the older record
   (260/260 on both First and Last Service Date) — so sorting `''` as 0 orders them correctly.
 
-  | Vehicle_Key | Invoice date | First Service Date | old anchor | → 30k due |
-  |---|---|---|---|---|
-  | `03-557292-1` | 2026-02-07 | 2026-02-10 | 2026-02-07 | 2027-08-07 |
-  | `03-557292-0` | — | 2025-04-19 | 2025-04-19 | 2026-10-19 |
-
-  Its real service history is one continuous vehicle: `2024-07-03 @1,073km code 1` →
-  `2025-04-19 @10,887 code 10` → `2025-10-08 @14,742 code 20` → `2026-02-10 @14,854 code 30`. True
-  30k due = 2024-07-03 + 18mo = **2026-01-03**; it actually turned up **2026-02-10**. The old rule
-  missed by 8 and 20 months and put the VIN in the cohort **twice, in two different quarters**.
+  **Insight from one traced resold vehicle (keys `-0` → `-1`):** the old per-row rule dated its 30k
+  from each key separately — 2027-08-07 from the new key's invoice, 2026-10-19 from the old key's
+  `First Service Date` (really its 10k visit) — while its true first service (2024-07-03) gives
+  **2026-01-03**; it came in 2026-02-10, so the old rule missed by 8 and 20 months and listed the
+  same vehicle **twice, in two different quarters**.
 
   **Picking the earlier EDA row is NOT enough** — the older key's `First Service Date` (2025-04-19)
   is that vehicle's *code-10* visit, not its first service (2024-07-03). Raw service history has to
@@ -714,11 +721,22 @@ reconciliation for the present codebase against Q1 and Q2 sets.
   exist on disk only; don't assume a fresh clone has them.
 
 ## Untracked dirs on disk (what's in them)
+- **Cleanup 2026-11-26.** 467 finished-experiment items (1.1 GB) were MOVED, not deleted, to
+  `c:\Techmax\cwf\backups\2026-11-26_cleanup\`: experiment matrices, ~75 model families,
+  `_dprime_v3` / `_cal` / `_cand_b45` / `_h45` test sets, `dprime_v2/v3/`, the 20k Q3 cohort folders,
+  `reconcile_q3_2026/`, `cache/`, `frames_20k.pkl`, root diag/log files. Its `README.txt` says what
+  each group served; `moved_items.csv` lists original paths — restore = move back to the same path.
+  Paths in this file that point at those items now live there. Kept: `data/`, `Q2/`, `Q3/`, `later/`,
+  `legacy/`, `salman/`, `predictions/`, production + plain + `_cand_v3` + D′ v2 matrices/models/test
+  sets. `.gitignore` now also covers `production_models/`, `test_sets/`, `cache/`,
+  `**/pruned_*.json`, `.agents/`, `.vibe-wise/` and `q1_due_rule_experiment/*.json`.
+- **The GitHub repo is PUBLIC.** Never commit customer identifiers (VINs, `Vehicle_Key`s with visit
+  dates). The `q1_due_rule_experiment/*.json` files hold them and are ignored for that reason.
 - `test_sets/` — `prepare_test_set.py` output; only 20/30/40/50k exist.
 - `predictions/{m}k/` — `score_milestone.py` output (`scored_*.csv`) + legacy prediction datasets.
 - `tests_alan/` — `Q1/`,`Q2/` legacy test features + the real `traindataq1_q2/`, `testdataq1_q2/`.
 - `refactored_test_dir/` — current feature-eng output (`final_processed_{m}k.csv`, MI scores).
-- `validatecode/` — legacy monolith intermediates; `predservicemil_4.py:2307` *reads*
+- `validatecode/` — legacy monolith intermediates; `monoliths/predservicemil_4.py:2307` *reads*
   `Model_clusters_{m}.csv` / `Variant_clusters_{m}.csv` / `Nationality_clusters_{m}.csv` from here,
   so it is an input dir, not just debug dumps.
 - `later/` — newer-vintage data (Appointments/VHC Q1-2027, Digital Sessions Q1-2026) not wired into
@@ -858,7 +876,7 @@ It removes 12–26% of rows but **40–54% of the flagged positives**, because t
 score already-completed vehicles highly. That is expected, not a bug.
 
 ### Q3 2026 outcomes landed — the first genuinely forward test, and every model degrades
-Measured 2026-10-06 by `reconcile_quarter.py` against `Q3/Service_History_Q3-2026.csv` (20,726 rows,
+Measured 2026-10-06 by `analysis/reconcile_quarter.py` against `Q3/Service_History_Q3-2026.csv` (20,726 rows,
 16,028 VINs, 2026-07-01..2026-09-29). The Q3 lists were built with `--train-cutoff 2026-06-30`,
 **before Q3 happened**, so this is the first time any promoted model has been scored on outcomes that
 were not in the data when it was built.
@@ -902,7 +920,7 @@ Lift over each list's own base rate rises monotonically with milestone, 20k **1.
 **3.46×**: at 20k the flag barely beats contacting the whole list, while 100k flags too many (221 FP
 against 110 TP). **The model earns its keep at HIGH milestones, not low ones.**
 
-`reconcile_quarter.py` takes `--cohort-dir`, `--milestones`, `--out-dir`; it reads delivered lists and
+`analysis/reconcile_quarter.py` takes `--cohort-dir`, `--milestones`, `--out-dir`; it reads delivered lists and
 raw history only — no model, no feature engineering. The EDA gate deliberately stays
 `data/EDA_Q2-2026.csv`: gating on the Q3 snapshot would use post-quarter state to decide who was ever
 eligible. `Q3/EDA_Q3-2026.csv` is **Vehicle_Key-keyed with no VIN column** — cross-check only, never
@@ -1182,7 +1200,7 @@ separate them. Omit this attribute from due-date leg candidates unless a visit-l
 `(Service_Code, Next Service Date)` pairs is sourced separately.
 
 ### Third due-date leg — `due_date.last_completed_plus_months()` — MEASURED, clean recall win (2026-10-08)
-Found by tracing one vehicle by hand (`JN8AY2NY9R9499028`): `schedule` said due 2025-07-08 (6 months
+Found by tracing one vehicle by hand: `schedule` said due 2025-07-08 (6 months
 too early — it hadn't even had its 10k yet), `burn_rate` said 2026-11-24 (11 months too late — an
 early low-mileage stretch dragged its pooled rate down), but it actually completed 2026-01-02. A
 third rule — **last completed milestone below the target + a flat 6 months, no rate** (same "hi"
@@ -1472,7 +1490,7 @@ vs the vehicle's own average past PMS gap; within ±25% = kept rhythm (a genuine
 | 50k | 292 | 78 | 156 | 7 | **51** | 24 |
 
 Typical pace change is large (later: 1.7–1.8× their usual gap; sooner: 0.2–0.5×). The ±25% line is a
-judgement call. Traced example `03-608673-0` (VIN `1N4BL4AP7SN388231`, 20k on 2026-01-02): service
+judgement call. Traced example (one car, 20k done on 2026-01-02): service
 1 → 10k took 33 days, so burn-rate (265.7 km/day) projected 2025-12-12; schedule (invoice 2025-09-26
 + 12 mo) 2026-09-26; last+6mo 2026-05-05; avg-interval 2025-11-25 (segments 7 and 33 days). It then
 took 58 days 10k → 20k — a pace change no leg could see. Not a bug.
@@ -1486,8 +1504,8 @@ only +22 / +20 / +27 / +22. Source: `q1_due_rule_experiment/avg_interval_no_invo
 
 **Burn-rate fallback when there is no first-service record — DEFERRED, act on later.**
 `burn_rate_date()` needs a `Service_Num == 1` row as `lo` (`due_date.py`, `lo_rows`), else NaT — the
-non-PMS rows in between are already ignored. Found via `03-579440-0` (VIN `1N4BL4AP5RN434147`, no
-code-1 record, 50k burn-rate blank). Common: 20.2% / 26.4% / 30.1% / 34.2% of vehicles with a PMS
+non-PMS rows in between are already ignored. Found via one car with no code-1 record whose 50k
+burn-rate date came out blank. Common: 20.2% / 26.4% / 30.1% / 34.2% of vehicles with a PMS
 below 20k / 30k / 40k / 50k have no first-service record. `burn_rate_date(..., lo_fallback=True)`
 (default False, unchanged) anchors `lo` on the earliest PMS visit instead. Caught, current → fallback:
 
@@ -1994,7 +2012,7 @@ How to read it:
 - ±45-list AUC is not comparable with exact-list AUC (more easy negatives).
 - The exact-quarter tree has a slightly higher F1 in list (0.784 / 0.814 / 0.718 / 0.734) but finds fewer
   of all visitors — the ±45 set-up is the one that serves the recall-of-all goal.
-- Verified: today's rows match `reconcile_quarter.py` (Q3 AUC 0.619 / 0.673 / 0.852 / 0.855), the exact
+- Verified: today's rows match `analysis/reconcile_quarter.py` (Q3 AUC 0.619 / 0.673 / 0.852 / 0.855), the exact
   rows match `best_model_confusion.py`, the ±45 rows match `eval_pad45.py`.
 
 **Feature importance of the ±45 tree (`success_window_importance.py`, 2026-10-19).** Permutation AUC
@@ -2086,5 +2104,5 @@ Not previously listed here, all current:
 `S3_MIGRATION_GUIDE.md` and `FABRIC_MIGRATION_GUIDE.md` (both aspirational 8-stage migration plans;
 none of the files they described were ever written), `FABLE5_INVESTIGATION_BRIEF.md` (hand-off audit
 brief, superseded by this file and the rollout runbook) and `REFACTOR_LOSSES.md` (line-referenced
-`prepare_test_set.py` vs `predservicemil_4.py` audit — it was the source of the zero-fill percentages
+`prepare_test_set.py` vs `monoliths/predservicemil_4.py` audit — it was the source of the zero-fill percentages
 and the two-`selected_features.json` finding, both of which are now recorded in the Gotchas above).

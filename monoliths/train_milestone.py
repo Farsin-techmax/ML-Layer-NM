@@ -1,15 +1,15 @@
 """
 Train a PMS turn-up classifier for a single milestone.
 
-Reads the feature-engineered CSV produced by pmstrainfeatureEng_6.py,
+Reads the feature-engineered CSV produced by monoliths/pmstrainfeatureEng_6.py,
 trains a PyTorch binary classifier, and saves:
     models/{milestone}k/model.pt        - trained model weights
     models/{milestone}k/scaler.pkl      - fitted RobustScaler
     models/{milestone}k/feature_list.json - ordered feature names used
 
 Usage:
-    python train_milestone.py 70          # train 70k model
-    python train_milestone.py 40          # train 40k model
+    python monoliths/train_milestone.py 70          # train 70k model
+    python monoliths/train_milestone.py 40          # train 40k model
 """
 
 import json
