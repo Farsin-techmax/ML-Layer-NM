@@ -293,6 +293,10 @@ def load_artifacts(milestone, device=None, mdir=None, features_file=None):
     models/selected_features_{m}k{tag}.json, so loading a tagged mdir against the untagged list
     raises a state_dict size mismatch when the two disagree on feature count -- or, worse, loads
     silently when they happen to match and feeds the model a differently-ordered matrix.
+
+    Weights file is `best_model.pt` (retrain.py's staging convention, models/{m}k*/) with a fallback
+    to `model.pt` (production_models/{m}k/'s convention, since 2026-09-08) -- added 2026-09-09 so
+    score_milestone.py works against a promoted production dir directly, no separate script needed.
     """
     device = device or torch.device("cpu")
     mdir = mdir or model_dir(milestone)
@@ -300,7 +304,10 @@ def load_artifacts(milestone, device=None, mdir=None, features_file=None):
     imputer = joblib.load(os.path.join(mdir, 'imputer.joblib'))
     scaler = joblib.load(os.path.join(mdir, 'scaler.joblib'))
     model = BinaryClassifier(input_dim=len(selected_features)).to(device)
-    model.load_state_dict(torch.load(os.path.join(mdir, 'best_model.pt'), map_location=device))
+    weights_path = os.path.join(mdir, 'best_model.pt')
+    if not os.path.exists(weights_path):
+        weights_path = os.path.join(mdir, 'model.pt')
+    model.load_state_dict(torch.load(weights_path, map_location=device))
     model.eval()
     return model, imputer, scaler, selected_features
 

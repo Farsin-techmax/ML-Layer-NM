@@ -43,7 +43,14 @@ def main():
 
     m = args.milestone
     mdir = args.model_dir or model_dir(m)
-    for f in ['best_model.pt', 'imputer.joblib', 'scaler.joblib']:
+    # weights file is best_model.pt (models/{m}k*/ staging convention) or model.pt
+    # (production_models/{m}k/ convention, since 2026-09-08) -- load_artifacts() falls back the
+    # same way, this check just needs to accept either name up front.
+    has_weights = os.path.exists(os.path.join(mdir, 'best_model.pt')) or \
+                  os.path.exists(os.path.join(mdir, 'model.pt'))
+    if not has_weights:
+        sys.exit(f"Missing best_model.pt/model.pt in {mdir} -- run: python retrain.py {m}")
+    for f in ['imputer.joblib', 'scaler.joblib']:
         if not os.path.exists(os.path.join(mdir, f)):
             sys.exit(f"Missing {os.path.join(mdir, f)} -- run: python retrain.py {m}")
     # The feature list is one file per model at the models/ root, not inside the model dir.

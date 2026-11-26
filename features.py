@@ -460,10 +460,13 @@ def derive_npms_features2(serv1):
     ).reset_index()
 
     freq_npms = first_last.merge(npms_counts, on='Vin_No', how='left')
-    freq_npms['freq_NPMS'] = (
-        (freq_npms['Last_NPMS_Date'].dt.to_period("M") - freq_npms['First_NPMS_Date'].dt.to_period("M"))
-        .apply(lambda x: x.n)
-    ) / freq_npms['nNPMS']
+    # Month difference computed from year/month components, not period subtraction: on
+    # pandas 3.0.3 `to_period("M") - to_period("M")` raises TypeError when either side is NaT
+    # (a VIN whose non-PMS dates all failed to parse), instead of propagating NaN. Numerically
+    # identical for valid rows; NaT rows get NaN, as the old .apply path intended.
+    _months = ((freq_npms['Last_NPMS_Date'].dt.year - freq_npms['First_NPMS_Date'].dt.year) * 12
+               + (freq_npms['Last_NPMS_Date'].dt.month - freq_npms['First_NPMS_Date'].dt.month))
+    freq_npms['freq_NPMS'] = _months / freq_npms['nNPMS']
 
     return freq_npms[['Vin_No', 'freq_NPMS']], npms_counts, npmsrevenue, pms_counts
 
@@ -722,7 +725,8 @@ def derive_appointment_show_features(appt_df, service_df, serv_code, filter_date
                                      booking_date_col="Due Date IN"):
     """Show/no-show appointment features per Vehicle Magic."""
     df = appt_df.copy()
-    df["Service_Num"] = df["WIP_SERVCODE"].apply(derive_servcode)
+    df["Service_Num"] = pd.to_numeric(
+        df["WIP_SERVCODE"].apply(derive_servcode), errors="coerce").fillna(0).astype("int64")
 
     service_df = _derive_vehicle_magic(service_df)
     df = df[df['Vehicle Magic'].isin(service_df['Vehicle Magic'].unique())]
@@ -761,7 +765,10 @@ def compute_late_appointment_metrics(appt_df, service_df, filter_date, svc=None)
     service_df["Service_Date"] = parse_dates(service_df["Service_Date"])
     appt_df = appt_df[appt_df['Vehicle Magic'].isin(service_df["Vehicle Magic"].unique())]
 
-    appt_df["Service_Num"] = appt_df["WIP_SERVCODE"].apply(derive_servcode)
+    # astype int64 keeps the merge key numeric even when appt_df is EMPTY -- .apply() on an
+    # empty Series returns object dtype, and merging object vs int64 Service_Num raises.
+    appt_df["Service_Num"] = pd.to_numeric(
+        appt_df["WIP_SERVCODE"].apply(derive_servcode), errors="coerce").fillna(0).astype("int64")
     if svc is not None and svc != 0:
         appt_df = appt_df.query("`Due Date IN` <= @filter_date and Service_Num > 1")
     elif svc is None:
@@ -797,7 +804,10 @@ def compute_last_appointment_status_with_constant_service_code(appt_df, service_
     service_df["Service_Date"] = parse_dates(service_df["Service_Date"])
     appt_df = appt_df[appt_df['Vehicle Magic'].isin(service_df["Vehicle Magic"].unique())]
 
-    appt_df["Service_Num"] = appt_df["WIP_SERVCODE"].apply(derive_servcode)
+    # astype int64 keeps the merge key numeric even when appt_df is EMPTY -- .apply() on an
+    # empty Series returns object dtype, and merging object vs int64 Service_Num raises.
+    appt_df["Service_Num"] = pd.to_numeric(
+        appt_df["WIP_SERVCODE"].apply(derive_servcode), errors="coerce").fillna(0).astype("int64")
     if last_service_code != 0:
         appt_df = appt_df.query("`Due Date IN` <= @filter_date and Service_Num > 1")
     else:
@@ -856,7 +866,10 @@ def compute_nonpms_appointment_metrics(appt_df, service_df):
 
     appt_df["Due Date IN"] = pd.to_datetime(appt_df["Due Date IN"], errors="coerce", dayfirst=True)
     service_df["Service Date"] = parse_dates(service_df["Service_Date"])
-    appt_df["Service_Num"] = appt_df["WIP_SERVCODE"].apply(derive_servcode)
+    # astype int64 keeps the merge key numeric even when appt_df is EMPTY -- .apply() on an
+    # empty Series returns object dtype, and merging object vs int64 Service_Num raises.
+    appt_df["Service_Num"] = pd.to_numeric(
+        appt_df["WIP_SERVCODE"].apply(derive_servcode), errors="coerce").fillna(0).astype("int64")
 
     appt_df = appt_df[appt_df["Service_Num"] == 0]
     service_df = service_df[service_df["Service_Num"] == 0]
@@ -933,7 +946,8 @@ def count_service_appointments_booked(appt_df, service, serv_code, filter_date,
     df = df[df['Vehicle Magic'].isin(service['Vehicle Magic'].unique())]
     df[booking_date_col] = parse_dates(df[booking_date_col])
     filter_date = pd.to_datetime(filter_date)
-    df["Service_Num"] = df["WIP_SERVCODE"].apply(derive_servcode)
+    df["Service_Num"] = pd.to_numeric(
+        df["WIP_SERVCODE"].apply(derive_servcode), errors="coerce").fillna(0).astype("int64")
     df = df[df[booking_date_col] <= filter_date]
     df = df.query("Service_Num < @serv_code")
     return df.groupby(vehicle_col).size().reset_index(name="no_of_service_appointments_booked")
@@ -988,7 +1002,13 @@ def transform_complaint_features(main_df, service_df):
             "max_complaint_resolution_days": max_res,
             "recent_complaint_resolution_days": recent,
         })
-    return pd.DataFrame(results)
+    # Explicit columns so an empty `merged` (degenerate small cohort quarter: no VIN has a
+    # pre-milestone service row) yields a joinable empty frame instead of a column-less one,
+    # which crashed the Vin_No merge loop with KeyError.
+    return pd.DataFrame(results, columns=[
+        "Vin_No", "latest_complaint_category", "has_complaint_history", "num_past_complaints",
+        "avg_complaint_resolution_days", "max_complaint_resolution_days",
+        "recent_complaint_resolution_days"])
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

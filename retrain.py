@@ -1,5 +1,7 @@
+import copy
 import os
 import sys
+# pyrefly: ignore [missing-import]
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -133,6 +135,11 @@ TRAIN_FROM = os.environ.get('PMS_TRAIN_FROM', '')
 # be compared on an identical held-back 2025 cohort slice, instead of on the two 2026 test quarters
 # (which must never drive a tuning decision -- there are only two of them).
 TRAIN_TO = os.environ.get('PMS_TRAIN_TO', '')
+# $env:PMS_DUE_CUTOFF=2025-06-30: the exact date used by the temporal-cutoff filter below (default
+# 2025-12-31, unchanged). TRAIN_FROM/TRAIN_TO filter by CohortQuarter YEAR only; this is for a
+# precise DATE cutoff -- e.g. testing whether the model still holds up on Q1/Q2 2026 when trained
+# with 6 months less history than production, a training-cutoff sensitivity check.
+DUE_CUTOFF = os.environ.get('PMS_DUE_CUTOFF', '2025-12-31')
 
 # models/{m}k/ for the weights/scaler/imputer, models/selected_features_{m}k.json for the feature
 # list -- one file per model, at the models/ root. Was models/models_alan/{m}k/ until 2026-08-12.
@@ -167,7 +174,7 @@ if TRAIN_FROM or TRAIN_TO:
     logger.info(f"PMS_TRAIN_FROM={TRAIN_FROM or '-'} PMS_TRAIN_TO={TRAIN_TO or '-'}: "
                 f"{_before} -> {len(train_df)} rows")
 
-# Temporal cutoff: train only on data up to Q4 2025 (test sets are Q1/Q2 2026), then sort by due
+# Temporal cutoff: train only on data up to DUE_CUTOFF (test sets are Q1/Q2 2026), then sort by due
 # date so the 80/20 split below really is chronological -- it holds out the most recent vehicles
 # rather than whatever happened to sit last in the file. Rows with an unparseable due date fail the
 # comparison and are dropped, as before.
@@ -176,13 +183,13 @@ if TRAIN_FROM or TRAIN_TO:
 # -> 2026-09-08). Measured on the 20k candidates matrix 2026-09-01: 50.6% of values parsed to a
 # different date, scrambling the chronological sort (0 rows flipped across the cutoff).
 _due = parse_dates(train_df[f'Next{MILESTONE}K_Due'])
-_keep = _due <= pd.Timestamp('2025-12-31')
+_keep = _due <= pd.Timestamp(DUE_CUTOFF)
 train_df = train_df[_keep].copy()
 train_df['_due_sort'] = _due[_keep]
 train_df = (train_df.sort_values('_due_sort', kind='mergesort')
                     .drop(columns='_due_sort')
                     .reset_index(drop=True))
-logger.info(f"After <=Q4-2025 cutoff + chronological sort: {train_df.shape}, "
+logger.info(f"After <={DUE_CUTOFF} cutoff + chronological sort: {train_df.shape}, "
             f"Target: {train_df['TargetFlag'].value_counts().to_dict()}")
 
 # === Step 2: Derive missing features ===
@@ -443,7 +450,9 @@ for epoch in range(EPOCHS):
         
     if val_loss < best_loss:
         best_loss = val_loss
-        best_model_state = model.state_dict()
+        # deepcopy: state_dict() returns references to the live weights, so without a copy the
+        # "best" state silently kept training and the saved file was the LAST epoch (fixed 2026-10-15)
+        best_model_state = copy.deepcopy(model.state_dict())
         counter = 0
     else:
         counter += 1
